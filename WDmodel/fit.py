@@ -1,4 +1,3 @@
-# -*- coding: UTF-8 -*-
 """
 Core data processing and fitting/sampling routines
 """
@@ -22,10 +21,10 @@ from six.moves import map
 from six.moves import range
 from six.moves import zip
 progress.STREAM = sys.stdout
-from . import io
-from . import passband
-from . import likelihood
-from . import mossampler
+import ioWD as io
+import passband
+import likelihood
+from mosfit import mossampler
 
 
 def polyfit_continuum(continuumdata, wave):

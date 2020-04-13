@@ -1,4 +1,3 @@
-# -*- coding: UTF-8 -*-
 """
 Instrumental throughput models and calibration and synthetic photometry
 routines
@@ -10,7 +9,7 @@ import warnings
 import numpy as np
 from scipy.interpolate import interp1d
 import pysynphot as S
-from . import io
+import ioWD as io
 from collections import OrderedDict
 from six.moves import zip
 

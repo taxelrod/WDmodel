@@ -1,4 +1,3 @@
-# -*- coding: UTF-8 -*-
 """
 Routines to visualize the DA White Dwarf model atmosphere fit
 """
@@ -16,8 +15,8 @@ import matplotlib.gridspec as gridspec
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.font_manager import FontProperties as FM
 from astropy.visualization import hist
-from . import io
-from . import passband
+import ioWD as io
+import passband
 import corner
 from six.moves import range
 

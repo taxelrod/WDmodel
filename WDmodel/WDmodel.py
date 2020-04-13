@@ -1,4 +1,3 @@
-# -*- coding: UTF-8 -*-
 """
 DA White Dwarf Atmosphere Models and SED generator.
 
@@ -10,7 +9,7 @@ from __future__ import absolute_import
 from __future__ import unicode_literals
 import warnings
 import numpy as np
-from . import io
+import ioWD as io
 import extinction
 import scipy.interpolate as spinterp
 from scipy.ndimage.filters import gaussian_filter1d

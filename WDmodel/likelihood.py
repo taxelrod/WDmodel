@@ -10,8 +10,8 @@ from __future__ import unicode_literals
 import numpy as np
 from celerite.modeling import Model
 from scipy.stats import norm, halfcauchy
-from . import io
-from .passband import get_model_synmags
+import ioWD as io
+from passband import get_model_synmags
 
 __all__=['WDmodel_Likelihood', 'WDmodel_Posterior', 'setup_likelihood']
 

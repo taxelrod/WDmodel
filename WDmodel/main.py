@@ -1,4 +1,3 @@
-# -*- coding: UTF-8 -*-
 """
 The WDmodel package is designed to infer the SED of DA white dwarfs given
 spectra and photometry. This main module wraps all the other modules, and their
@@ -9,14 +8,14 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import unicode_literals
 import sys
-import mpi4py
+from mpi4py import MPI
 import numpy as np
-from . import io
-from . import WDmodel
-from . import passband
-from . import covariance
-from . import fit
-from . import viz
+import ioWD as io
+import WDmodel
+import passband
+import covariance
+import fit
+import viz
 
 
 sys_excepthook = sys.excepthook
@@ -26,7 +25,7 @@ def mpi_excepthook(excepttype, exceptvalue, traceback):
     terminate all MPI processes when an Exception is raised.
     """
     sys_excepthook(excepttype, exceptvalue, traceback)
-    mpi4py.MPI.COMM_WORLD.Abort(1)
+    MPI.COMM_WORLD.Abort(1)
 
 
 def main(inargs=None):
@@ -71,7 +70,7 @@ def main(inargs=None):
     :py:class:`emcee.PTSampler` with a more reliable auto-correlation estimate.
     Finally, the result is output along with various plots.
     """
-    comm = mpi4py.MPI.COMM_WORLD
+    comm = MPI.COMM_WORLD
     size = comm.Get_size()
     if size > 1:
         # force all MPI processes to terminate if we are running with --mpi and an exception is raised
