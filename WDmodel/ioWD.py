@@ -9,7 +9,7 @@ from __future__ import print_function
 from __future__ import unicode_literals
 import sys
 import os
-from emcee.utils import MPIPool
+from schwimmbad import MPIPool
 import argparse
 import warnings
 from copy import deepcopy
