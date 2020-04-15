@@ -1,16 +1,15 @@
 #!/usr/bin/env python
-# -*- coding: UTF-8 -*-
 """
 Runs some tests for coveralls on the WDmodel package. Just checks that the
 functions execute, not that the output is sane.
 """
 import sys
 import numpy as np
-import WDmodel.WDmodel
-import WDmodel.io
+import WDmodel
+import ioWD
 
 def main():
-    model = WDmodel.WDmodel.WDmodel()
+    model = WDmodel.WDmodel()
     TEFF = 42757.
     LOGG = 7.732
     AV   = 0.01
@@ -44,7 +43,7 @@ def main():
     model.extract_spectral_line(testspec.wave, testspec.flux, line=2)
 
     fn = 'out/test/test/test_mcmc.hdf5'
-    WDmodel.io.read_mcmc(fn)
+    ioWD.read_mcmc(fn)
 
     return
 

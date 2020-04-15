@@ -766,6 +766,8 @@ def fit_model(spec, phot, model, covmodel, pbs, params,\
     :py:mod:`WDmodel.covariance`
     """
 
+    print('emcee version:', emcee.__version__)
+    
     outfile = io.get_outfile(outdir, specfile, '_mcmc.hdf5', check=True, redo=redo, resume=resume)
     if not resume:
         # create a HDF5 file to hold the chain data
@@ -876,7 +878,10 @@ def fit_model(spec, phot, model, covmodel, pbs, params,\
             print(message)
 
         # set walkers to start production at final burnin state
-        pos = result[0]
+        try:
+            pos = result[0]
+        except TypeError:
+            pos = result.coords
 
         # setup incremental chain saving
         chain = outf.create_group("chain")
@@ -957,7 +962,12 @@ def fit_model(spec, phot, model, covmodel, pbs, params,\
     outf.flush()
 
     # since we're going to save the chain in HDF5, we don't need to save it in memory elsewhere
-    sampler_kwargs['storechain']=False
+    sampler_kwargs['store']=False
+    try:
+        sampler.sample(pos, iterations=1, **sampler_kwargs)
+    except TypeError:
+        del sampler_kwargs['store']
+        sampler_kwargs['storechain']=False
 
     # run the production chain
     with progress.Bar(label="Production", expected_size=laststep+nprod, hide=False) as bar:
@@ -966,8 +976,13 @@ def fit_model(spec, phot, model, covmodel, pbs, params,\
         for i, result in enumerate(sampler.sample(pos, iterations=thin*nprod, **sampler_kwargs)):
             if (i+1)%thin != 0:
                 continue
-            position = result[0]
-            lnpost   = result[1]
+            try:
+                position = result[0]
+                lnpost   = result[1]
+            except:
+                position = result.coords
+                lnpost   = result.log_prob
+                
             position = position.reshape((-1, nparam))
             lnpost   = lnpost.reshape(ntemps*nwalkers)
             dset_chain[ntemps*nwalkers*j:ntemps*nwalkers*(j+1),:] = position

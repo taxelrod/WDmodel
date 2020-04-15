@@ -89,13 +89,6 @@ ENV/
 # Rope project settings
 .ropeproject
 
-# Data
-data/
-out*/
-*.flm
-*.phot
-Hubeny_models/
-
 # tempfiles/scripts
 profile.dat
 scripts/
