@@ -1,4 +1,3 @@
-# -*- coding: UTF-8 -*-
 """
 Classes defining the likelihood and the posterior probability of the model
 given the data
@@ -105,17 +104,19 @@ class WDmodel_Likelihood(Model):
         """
         if phot is None:
             phot_chi = 0.
-            mod = model._get_obs_model(self.teff, self.logg, self.av, self.fwhm,\
+            mod_spec = model._get_obs_model(self.teff, self.logg, self.av_spec, self.fwhm,\
                     spec.wave, rv=self.rv, pixel_scale=pixel_scale)
         else:
-            mod, full = model._get_full_obs_model(self.teff, self.logg, self.av, self.fwhm,\
+            mod_spec = model._get_obs_model(self.teff, self.logg, self.av_spec, self.fwhm,\
+                    spec.wave, rv=self.rv, pixel_scale=pixel_scale)
+            mod_phot, full = model._get_full_obs_model(self.teff, self.logg, self.av, self.fwhm,\
                     spec.wave, rv=self.rv, pixel_scale=pixel_scale)
             mod_mags = get_model_synmags(full, pbs, mu=self.mu)
             phot_res = phot.mag - mod_mags.mag
             phot_chi = np.sum(phot_res**2./((phot.mag_err**2.)+(phot_dispersion**2.)))
 
-        mod *= (1./(4.*np.pi*(self.dl)**2.))
-        res = spec.flux - mod
+        mod_spec *= (1./(4.*np.pi*(self.dl)**2.))
+        res = spec.flux - mod_spec
         return covmodel.lnlikelihood(spec.wave, res, spec.flux_err, self.fsig, self.tau, self.fw) - (phot_chi/2.)
 
 

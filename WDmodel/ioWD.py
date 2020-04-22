@@ -1,4 +1,3 @@
-# -*- coding: UTF-8 -*-
 """
 I/O methods. All the submodules of the WDmodel package use this module for
 almost all I/O operations.
@@ -22,7 +21,7 @@ import h5py
 from six.moves import range
 
 # Declare this tuple to init the likelihood model, and to preserve order of parameters
-_PARAMETER_NAMES = ("teff", "logg", "av", "rv", "dl", "fwhm", "fsig", "tau", "fw", "mu")
+_PARAMETER_NAMES = ("teff", "logg", "av", "av_spec", "rv", "dl", "fwhm", "fsig", "tau", "fw", "mu")
 
 
 def get_options(args, comm):

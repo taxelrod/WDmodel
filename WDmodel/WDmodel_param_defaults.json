@@ -26,6 +26,15 @@
             2.0
         ]
     },
+    "av_spec": {
+        "value": 0.0,
+        "fixed": true,
+        "scale": 0.05,
+        "bounds": [
+            0.0,
+            2.0
+        ]
+    },
     "rv": {
         "value": 3.1,
         "fixed": true,
