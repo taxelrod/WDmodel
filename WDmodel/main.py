@@ -271,7 +271,7 @@ def main(inargs=None):
         # parse the samples in the chain and get the result
         result = fit.get_fit_params_from_samples(param_names, samples, samples_lnprob, mcmc_params,\
                         ntemps=ntemps, nwalkers=nwalkers, nprod=nprod, discard=discard)
-        mcmc_params, in_samp, in_lnprob = result
+        mcmc_params, in_samp, in_lnprob, tlogg_params = result
 
         # write the result to a file
         outfile = io.get_outfile(outdir, specfile, '_result.json')
@@ -296,5 +296,9 @@ def main(inargs=None):
         if phot is not None:
             phot_model_file = io.get_outfile(outdir, specfile, '_phot_model.dat')
             io.write_phot_model(phot, model_mags, phot_model_file)
+
+        if tlogg_params is not None:
+            tlogg_model_file = io.get_outfile(outdir, specfile, '_tlogg_model.dat')
+            io.write_tlogg_model(tlogg_params, tlogg_model_file)
 
     return
