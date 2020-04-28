@@ -25,6 +25,7 @@ import ioWD as io
 import passband
 import likelihood
 from mosfit import mossampler
+from normal2D import fitNormal2D
 
 
 def polyfit_continuum(continuumdata, wave):
@@ -1134,4 +1135,28 @@ def get_fit_params_from_samples(param_names, samples, samples_lnprob, params,\
             # this should never happen, unless the state of the files was changed
             message = "Huh.... {} not marked as fixed but was not fit for...".format(param)
             print(message)
-    return params, in_samp[mask,:], in_lnprob[mask]
+
+    # fit a 2D normal distribution to Teff, logg and return fit parameters as a separate dictionary
+    # find the indices in param_names for Teff and logg
+    for i, param in enumerate(param_names):
+        if param == 'teff':
+            teff = in_samp[mask, i]
+        elif param == 'logg':
+            logg = in_samp[mask, i]
+
+    if teff is None or logg is None:
+        print('Did not find Teff and/or logg in samples')
+        tLoggParams = None
+    else:
+        fitParams = fitNormal2D(teff, logg)
+        (scale, mu0, mu1, cov00, cov01, cov11) = fitParams
+        tLoggParams = {}
+        tLoggParams['teff_0'] = mu0
+        tLoggParams['logg_0'] = mu1
+        tLoggParams['teff_cov'] = cov00
+        tLoggParams['teff_logg_cov'] = cov01
+        tLoggParams['logg_cov'] = cov11
+        print(tLoggParams)
+                
+    
+    return params, in_samp[mask,:], in_lnprob[mask], tLoggParams
