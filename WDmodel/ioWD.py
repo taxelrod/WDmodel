@@ -1374,6 +1374,25 @@ def write_phot_model(phot, model_mags, outfile):
     message= "Wrote phot model file {}".format(outfile)
     print(message)
 
+def write_tlogg_model(tlogg_params, outfile):
+    """
+    Write the fit of the 2D normal fit to the Teff-logg model output to outfile
+
+    """
+    # these shenanigans required to use the Table interface with only a single row!
+
+    nParams = len(tlogg_params)
+    out = np.zeros((1,nParams))
+    for i, p in enumerate(tlogg_params.values()):
+        out[0, i] = p
+    names = list(tlogg_params.keys())
+    out = at.Table(out, names=names)
+    for name in names[1:]:
+        out[name].format='%.6f'
+    out.write(outfile, format='ascii.fixed_width', delimiter=' ', overwrite=True)
+    message= "Wrote tlogg model file {}".format(outfile)
+    print(message)
+
 
 def read_full_model(input_file):
     """
