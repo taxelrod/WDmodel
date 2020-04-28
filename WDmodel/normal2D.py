@@ -30,9 +30,12 @@ def binSamples(xPoints, yPoints, nxBins, nyBins, sigWidth=2.0):
 
     range=np.array([[xMin, xMax],[yMin,yMax]])
     
-    return np.histogram2d(xPoints, yPoints, bins=[nxBins, nyBins], range=range, normed=True) # (histo, xEdges, yEdges)
+    (histo, xEdges, yEdges) = np.histogram2d(xPoints, yPoints, bins=[nxBins, nyBins], range=range, normed=True)
+    xCen = (xEdges[:-1] + xEdges[1:])/2
+    yCen = (yEdges[:-1] + yEdges[1:])/2
+    return (histo, xCen, yCen)
 
-def normal2DObjFunc(normalParams, dataHisto, xEdges, yEdges):
+def normal2DObjFunc(normalParams, dataHisto, xEdges, yEdges, debug=True):
     
     (scale, mu0, mu1, cov00, cov01, cov11) = normalParams
     n2d = normal2D(scale, mu0, mu1, cov00, cov01, cov11)
@@ -40,14 +43,15 @@ def normal2DObjFunc(normalParams, dataHisto, xEdges, yEdges):
     for i,x in enumerate(xEdges):
         for j,y in enumerate(yEdges):
             obj += (n2d.pdf(x, y) - dataHisto[i, j])**2
-    print(obj, scale, mu0, mu1, cov00, cov01, cov11)
+    if debug:
+        print(obj, scale, mu0, mu1, cov00, cov01, cov11)
     return obj
 
 #def fitnormal2D(samples, sampleParams, xname, yname):
 # find xname and yname in list -> ix, iy
 
-def fitnormal2D(xSamples, ySamples, nxBins=50, nyBins=50):
-    (sampleHisto, xEdges, yEdges) = binSamples(xSamples, ySamples, nxBins, nyBins)
+def fitNormal2D(xSamples, ySamples, nxBins=50, nyBins=50, debug=False):
+    (sampleHisto, xCen, yCen) = binSamples(xSamples, ySamples, nxBins, nyBins)
 
     scale = 1
     mu0 = np.mean(xSamples)
@@ -55,16 +59,22 @@ def fitnormal2D(xSamples, ySamples, nxBins=50, nyBins=50):
     cov01 = 0
     mu1 = np.mean(ySamples)
     cov11 = np.var(ySamples)
+
+    cov00Min = 0.02*cov00
+    cov11Min = 0.02*cov11               
     
     guessParams = (scale, mu0, mu1, cov00, cov01, cov11) 
-    minResult = minimize(normal2DObjFunc, guessParams, method='L-BFGS-B', bounds=((0, None), (None, None), (None, None) , (0, None), (None, None), (0, None)), args=(sampleHisto, xEdges[:-1], yEdges[:-1]), options={'gtol':1.0e-7})
+    minResult = minimize(normal2DObjFunc, guessParams, method='L-BFGS-B', bounds=((0, None), (None, None), (None, None) , (cov00Min, None), (None, None), (cov11Min, None)), args=(sampleHisto, xCen, yCen), options={'gtol':1.0e-7})
 
-    (scale, mu0, mu1, cov00, cov01, cov11) = minResult.x
-    fit2D = normal2D(scale, mu0, mu1, cov00, cov01, cov11)
-    return minResult, fit2D
+    if debug:
+        (scale, mu0, mu1, cov00, cov01, cov11) = minResult.x
+        fit2D = normal2D(scale, mu0, mu1, cov00, cov01, cov11)
+        return minResult, fit2D
+    else:
+        return minResult.x
 
-def plotHisto2D(histo, xEdges, yEdges):
-    plt.contour(xEdges[:-1], yEdges[:-1], histo)
+def plotHisto2D(histo, xCen, yCen):
+    plt.contour(xCen, yCen, histo)
     plt.show()
                 
 
