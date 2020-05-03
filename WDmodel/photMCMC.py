@@ -101,12 +101,13 @@ class objectPhotometry(object):
 
     def logPrior(self, teff, logg, Av, dm):
         # evaluate the 2D normal
-        pass
+        return 0
 
     def calcSynMags(self, teff, logg, Av, dm, deltaZp):
         modelSed = self.model._get_model(teff, logg)
         modelSed = self.model.reddening(self.model._wave, modelSed, Av)
-        sedPack = np.rec.array([self.model._wave, modelSed], dtype=[('wave', '<f8'), ('flux', '<f8')]) # needed due to GN interface inconsistency
+        sedPack = np.rec.array([self.model._wave, modelSed], dtype=[('wave', '<f8'), ('flux', '<f8')])
+                        # needed due to GN interface inconsistency
         self.synMags = passband.get_model_synmags(sedPack, self.pb) # recarray with dtype=[('pb', '<U5'), ('mag', '<f8')])
         self.synMags['mag'] += dm + deltaZp
 
@@ -114,16 +115,57 @@ class objectPhotometry(object):
         self.calcSynMags(teff, logg, Av, dm, deltaZp)
         return np.sum(((self.phot['mag']-self.synMags['mag'])/self.phot['mag_err'])**2)
 
+    def logPost(self, teff, logg, Av, dm, deltaZp):
+        return self.logLikelihood(teff, logg, Av, dm, deltaZp) + self.logPrior(teff, logg, Av, dm)
+        
+
 
 class objectCollectionPhotometry(object):
-    def __init__(self, paramDict):
-        self.objectPhotList = []
-        # bring init stuff from main in here
 
-    # logPosterior is what's called by emcee EnsembleSampler
-    def logPosterior(theta):
-        return 0
+    def __init__(self, paramDict):
+
+        self.objNames = paramDict['objList'].keys()
+
+        self.nObjParams = 4  # increase this if additional per-object variables need to be added, eg Rv
+        self.objPhot = {}
+        self.objSlice = {}
+
+        print(self.objNames)
+        for (i, objName) in enumerate(self.objNames):
+            iLo = i*self.nObjParams
+            iHi = iLo + self.nObjParams
+            self.objSlice[objName] = np.s_[iLo:iHi]
+            self.objPhot[objName] = objectPhotometry(objName, paramDict)
+            self.objPhot[objName].loadPhotometry()
+            self.objPhot[objName].initPrior()
+            if i==0:
+                self.nBands = len(self.objPhot[objName].pb)
+            else:
+                checkNbands = len(self.objPhot[objName].pb)
+                assert checkNbands == self.nBands
+
+        self.ZpSlice = np.s_[iHi:iHi+6]
+
+    # return an initial guess at theta
     
+    def firstGuess(self):
+        pass
+    
+    # this is what's called by emcee EnsembleSampler to get the logPosterior
+
+    def __call__(self, theta):
+        # unpack theta into self.nObj arrays of 4, to be interpreted by each objPhot + an array of length self.nBands, which
+        # becomes deltaZp
+
+        deltaZp = theta[self.ZpSlice]
+        logPost = 0
+        for objName in self.objNames:
+            (teff, logg, Av, dm) = theta[self.objSlice[objName]]
+            logPost += self.objPhot[objName].logPost(teff, logg, Av, dm, deltaZp)
+
+        return logPost # + prior for deltaZp
+    
+        
 # setupPhotEnv sets the environment variable PYSYN_CDBS prior to importing bandpass
 
 def setupPhotEnv(pbPath):
@@ -131,6 +173,7 @@ def setupPhotEnv(pbPath):
     
     if pbPath is None:
         pbPath = '/home/tsa/Dropbox/WD/PyWD/WDmodel/WDdata/photometry/synphot/'
+
     os.environ['PYSYN_CDBS'] = pbPath
 
     passband = importlib.import_module('passband')
@@ -147,18 +190,9 @@ def main(paramFileName, pbPath = None):
     paramDict = json.load(f)
     f.close()
 
-    objNames = paramDict['objList'].keys()
+    objCollection = objectCollectionPhotometry(paramDict)
 
-    objPhot = {}
-
-    for objName in objNames:
-        objPhot[objName] = objectPhotometry(objName, paramDict)
-        objPhot[objName].loadPhotometry()
-        objPhot[objName].initPrior()
-
-    # need to initialize passbands here
-
-    return objPhot
+    return objCollection
     
     
             
