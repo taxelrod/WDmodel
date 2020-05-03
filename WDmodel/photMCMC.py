@@ -49,6 +49,8 @@ x -------------
 ====
 
 Overall likelihood(theta) needs to unpack components into groups for each object (is this a use for rec.array?) + those common to all (deltaZp)
+
+Must require same bands for all objects - check after instantiating all objects
 """
 
 import json
@@ -85,8 +87,6 @@ class objectPhotometry(object):
         # initialize self.pb
         self.nBands = len(self.phot.pb)
         self.pb = passband.get_pbmodel(self.phot.pb,self.model,  None)
-        # create empty synmags array
-        self.synMags = np.zeros((self.nBands))
 
     def initPrior(self):
         # read the tloggfile, setup the 2Dnormal based on its parameters
@@ -99,12 +99,20 @@ class objectPhotometry(object):
         self.logg_cov = colDict['logg_cov'].data[0]
         self.tloggPrior = normal2D.normal2D(1.0, self.teff_0, self.logg_0, self.teff_cov, self.teff_logg_cov, self.logg_cov)
 
-    def lnPrior(self, teff, logg, Av, dm):
+    def logPrior(self, teff, logg, Av, dm):
         # evaluate the 2D normal
         pass
 
     def calcSynMags(self, teff, logg, Av, dm, deltaZp):
-        pass
+        modelSed = self.model._get_model(teff, logg)
+        modelSed = self.model.reddening(self.model._wave, modelSed, Av)
+        sedPack = np.rec.array([self.model._wave, modelSed], dtype=[('wave', '<f8'), ('flux', '<f8')]) # needed due to GN interface inconsistency
+        self.synMags = passband.get_model_synmags(sedPack, self.pb) # recarray with dtype=[('pb', '<U5'), ('mag', '<f8')])
+        self.synMags['mag'] += dm + deltaZp
+
+    def logLikelihood(self, teff, logg, Av, dm, deltaZp):
+        self.calcSynMags(teff, logg, Av, dm, deltaZp)
+        return np.sum(((self.phot['mag']-self.synMags['mag'])/self.phot['mag_err'])**2)
 
 
 class objectCollectionPhotometry(object):
