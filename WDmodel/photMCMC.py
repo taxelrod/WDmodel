@@ -57,6 +57,7 @@ import json
 import importlib
 import ioWD
 import os
+import sys
 import numpy as np
 from astropy.table import Table
 import normal2D
@@ -74,8 +75,9 @@ class objectPhotometry(object):
         elif objName not in objList:
             print('objectPhotometry init: ', objName, 'not in objlist')
         else:
-            self.photFileName = objList[objName]['photFile']
-            self.tloggFileName = objList[objName]['tloggFile']
+            self.objParams = objList[objName]
+            self.photFileName = self.objParams['photFile']
+            self.tloggFileName = self.objParams['tloggFile']
 
         self.grid_file = paramDict['grid_file']
         self.grid_name = None
@@ -101,7 +103,7 @@ class objectPhotometry(object):
 
     def logPrior(self, teff, logg, Av, dm):
         # evaluate the 2D normal
-        return 0
+        return -np.log(self.tloggPrior.pdf(teff, logg))
 
     def calcSynMags(self, teff, logg, Av, dm, deltaZp):
         modelSed = self.model._get_model(teff, logg)
@@ -113,18 +115,43 @@ class objectPhotometry(object):
 
     def logLikelihood(self, teff, logg, Av, dm, deltaZp):
         self.calcSynMags(teff, logg, Av, dm, deltaZp)
-        return np.sum(((self.phot['mag']-self.synMags['mag'])/self.phot['mag_err'])**2)
+        return np.sum(-((self.phot['mag']-self.synMags['mag'])/self.phot['mag_err'])**2)
 
     def logPost(self, teff, logg, Av, dm, deltaZp):
         return self.logLikelihood(teff, logg, Av, dm, deltaZp) + self.logPrior(teff, logg, Av, dm)
-        
 
+    def firstGuess(self):
+
+        try:
+            guess_teff = self.objParams['guess_teff']
+        except KeyError:
+            guess_teff = self.teff_0  # center of prior distribution
+            
+        try:
+            guess_logg = self.objParams['guess_logg']
+        except KeyError:
+            guess_logg = self.logg_0  # center of prior distribution
+
+        try:
+            guess_Av = self.objParams['guess_Av']
+        except KeyError:
+            guess_Av = 0
+
+        try:
+            guess_dm = self.objParams['guess_dm']
+        except KeyError:
+            self.calcSynMags(guess_teff, guess_logg, guess_Av, 0, np.zeros((self.nBands)))
+            guess_dm = np.mean(self.phot.mag - self.synMags.mag)
+
+        return np.array((guess_teff, guess_logg, guess_Av, guess_dm))
+            
 
 class objectCollectionPhotometry(object):
 
     def __init__(self, paramDict):
 
         self.objNames = paramDict['objList'].keys()
+        self.nObj = len(self.objNames)
 
         self.nObjParams = 4  # increase this if additional per-object variables need to be added, eg Rv
         self.objPhot = {}
@@ -144,12 +171,17 @@ class objectCollectionPhotometry(object):
                 checkNbands = len(self.objPhot[objName].pb)
                 assert checkNbands == self.nBands
 
-        self.ZpSlice = np.s_[iHi:iHi+6]
+        self.ZpSlice = np.s_[iHi:iHi+self.nBands]
 
     # return an initial guess at theta
     
     def firstGuess(self):
-        pass
+        self.guess = np.zeros((self.nObj*self.nObjParams + self.nBands))
+        for objName in self.objNames:
+            self.guess[self.objSlice[objName]] = self.objPhot[objName].firstGuess()
+
+        self.guess[self.ZpSlice] = 0
+
     
     # this is what's called by emcee EnsembleSampler to get the logPosterior
 
@@ -178,9 +210,145 @@ def setupPhotEnv(pbPath):
 
     passband = importlib.import_module('passband')
 
+# borrow heavily from GN's code in fit.py for this part
 
-def logLikelihood(theta, objPhot):
-    pass
+#def doMCMC(paramDict, objCollection):
+    # get MCMC params out of paramDict
+
+    # initialize chains
+'''
+    # get the starting position and the scales for each parameter
+    init_p0  = lnlike.get_parameter_dict()
+    p0       = list(init_p0.values())
+    free_param_names = list(init_p0.keys())
+    std = [params[x]['scale'] for x in free_param_names]
+
+    # create a sample ball
+    pos = emcee.utils.sample_ball(p0, std, size=ntemps*nwalkers)
+    pos = fix_pos(pos, free_param_names, params)
+
+    if samptype == 'ensemble':
+        sampler = emcee.EnsembleSampler(nwalkers, nparam, lnpost,\
+                a=ascale,  pool=pool)
+        ntemps = 1
+
+'''
+    # burnin
+'''
+    if not resume:
+        with progress.Bar(label="Burn-in", expected_size=nburnin, hide=False) as bar:
+            bar.show(0)
+            j = 0
+            for i, result in enumerate(sampler.sample(pos, iterations=thin*nburnin, **sampler_kwargs)):
+                if (i+1)%thin == 0:
+                    bar.show(j+1)
+                    j+=1
+
+        # find the MAP position after the burnin
+        samples        = sampler.flatchain
+        samples_lnprob = sampler.lnprobability
+        map_samples        = samples.reshape(ntemps, nwalkers, nburnin, nparam)
+        map_samples_lnprob = samples_lnprob.reshape(ntemps, nwalkers, nburnin)
+        max_ind        = np.argmax(map_samples_lnprob)
+        max_ind        = np.unravel_index(max_ind, (ntemps, nwalkers, nburnin))
+        max_ind        = tuple(max_ind)
+        p1        = map_samples[max_ind]
+
+        # reset the sampler
+        sampler.reset()
+
+        lnlike.set_parameter_vector(p1)
+        message = "\nMAP Parameters after Burn-in"
+        print(message)
+        for k, v in lnlike.get_parameter_dict().items():
+            message = "{} = {:f}".format(k,v)
+            print(message)
+
+        # set walkers to start production at final burnin state
+        try:
+            pos = result[0]
+        except TypeError:
+'''
+    # production sample
+'''
+    with progress.Bar(label="Production", expected_size=laststep+nprod, hide=False) as bar:
+        bar.show(laststep)
+        j = laststep
+        for i, result in enumerate(sampler.sample(pos, iterations=thin*nprod, **sampler_kwargs)):
+            if (i+1)%thin != 0:
+                continue
+            try:
+                position = result[0]
+                lnpost   = result[1]
+            except:
+                position = result.coords
+                lnpost   = result.log_prob
+                
+            position = position.reshape((-1, nparam))
+            lnpost   = lnpost.reshape(ntemps*nwalkers)
+            dset_chain[ntemps*nwalkers*j:ntemps*nwalkers*(j+1),:] = position
+            dset_lnprob[ntemps*nwalkers*j:ntemps*nwalkers*(j+1)] = lnpost
+
+            # save state every 100 steps
+            if (j+1)%100 == 0:
+                # make sure we know how many steps we've taken so that we can resize arrays appropriately
+                chain.attrs["laststep"] = j+1
+                outf.flush()
+
+                # save the state of the chain
+                with open(statefile, 'wb') as f:
+                    pickle.dump(result, f, 2)
+
+            bar.show(j+1)
+            j+=1
+
+        # save the final state of the chain and nprod, laststep
+        chain.attrs["nprod"]    = laststep+nprod
+        chain.attrs["laststep"] = laststep+nprod
+        with open(statefile, 'wb') as f:
+            pickle.dump(result, f, 2)
+
+    # save the acceptance fraction
+    if resume:
+        if "afrac" in list(chain.keys()):
+            del chain["afrac"]
+        if samptype != 'ensemble':
+            if "tswap_afrac" in list(chain.keys()):
+                del chain["tswap_afrac"]
+    chain.create_dataset("afrac", data=sampler.acceptance_fraction)
+    if samptype != 'ensemble' and ntemps > 1:
+        chain.create_dataset("tswap_afrac", data=sampler.tswap_acceptance_fraction)
+
+    samples         = np.array(dset_chain)
+    samples_lnprob  = np.array(dset_lnprob)
+
+    # finalize the chain file, close it and close the pool
+    outf.flush()
+    outf.close()
+'''
+    # output
+'''
+    # find the MAP value after production
+    map_samples = samples.reshape(ntemps, nwalkers, laststep+nprod, nparam)
+    map_samples_lnprob = samples_lnprob.reshape(ntemps, nwalkers, laststep+nprod)
+    max_ind = np.argmax(map_samples_lnprob)
+    max_ind = np.unravel_index(max_ind, (ntemps, nwalkers, laststep+nprod))
+    max_ind = tuple(max_ind)
+    p_final = map_samples[max_ind]
+    lnlike.set_parameter_vector(p_final)
+    message = "\nMAP Parameters after Production"
+    print(message)
+
+    for k, v in lnlike.get_parameter_dict().items():
+        message = "{} = {:f}".format(k,v)
+        print(message)
+    message = "Mean acceptance fraction: {0:.3f}".format(np.mean(sampler.acceptance_fraction))
+    print(message)
+
+    # return the parameter names of the chain, the positions, posterior, and the shape of the chain
+    return  free_param_names, samples, samples_lnprob, everyn, (ntemps, nwalkers, laststep+nprod, nparam)
+'''
+
 
 def main(paramFileName, pbPath = None):
 
@@ -192,7 +360,12 @@ def main(paramFileName, pbPath = None):
 
     objCollection = objectCollectionPhotometry(paramDict)
 
+#    doMCMC(paramDict, objCollection)
+
     return objCollection
+
+if __name__ == '__main__':
+    main(sys.argv[1])
     
     
             
