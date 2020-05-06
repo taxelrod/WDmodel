@@ -62,7 +62,7 @@ import numpy as np
 from astropy.table import Table
 import normal2D
 import WDmodel
-
+import emcee
 
 # objectPhotometry encapsulates all photometric data and fit results for a WD
 
@@ -82,6 +82,14 @@ class objectPhotometry(object):
         self.grid_file = paramDict['grid_file']
         self.grid_name = None
         self.model = WDmodel.WDmodel(self.grid_file, self.grid_name)
+
+        self.teff_lb, self.teff_ub = paramDict['teff']['bounds']
+        self.logg_lb, self.logg_ub = paramDict['logg']['bounds']
+        self.av_lb, self.av_ub = paramDict['av']['bounds']
+        self.dm_lb, self.dm_ub = paramDict['dm']['bounds']
+
+        self.lowerBounds = np.array((self.teff_lb, self.logg_lb, self.av_lb, self.dm_lb))
+        self.upperBounds = np.array((self.teff_ub, self.logg_ub, self.av_ub, self.dm_ub))
             
 
     def loadPhotometry(self):
@@ -123,40 +131,49 @@ class objectPhotometry(object):
     def firstGuess(self):
 
         try:
-            guess_teff = self.objParams['guess_teff']
+            guess_teff = self.objParams['guess_teff']   # if one is specified, both must be
+            guess_teff_sigma = self.objParams['guess_teff_sigma']
         except KeyError:
             guess_teff = self.teff_0  # center of prior distribution
+            guess_teff_sigma = np.sqrt(self.teff_cov)
             
         try:
             guess_logg = self.objParams['guess_logg']
+            guess_logg_sigma = self.objParams['guess_logg_sigma']
         except KeyError:
             guess_logg = self.logg_0  # center of prior distribution
+            guess_logg_sigma = np.sqrt(self.logg_cov)
 
         try:
             guess_Av = self.objParams['guess_Av']
+            guess_Av_sigma = self.objParams['guess_Av_sigma']
         except KeyError:
             guess_Av = 0
+            guess_Av_sigma = 0.5
 
         try:
             guess_dm = self.objParams['guess_dm']
+            guess_dm_sigma = self.objParams['guess_dm_sigma']
         except KeyError:
             self.calcSynMags(guess_teff, guess_logg, guess_Av, 0, np.zeros((self.nBands)))
             guess_dm = np.mean(self.phot.mag - self.synMags.mag)
+            guess_dm_sigma = np.std(self.phot.mag - self.synMags.mag)
 
-        return np.array((guess_teff, guess_logg, guess_Av, guess_dm))
+        return np.array((guess_teff, guess_logg, guess_Av, guess_dm)), \
+            np.array((guess_teff_sigma, guess_logg_sigma, guess_Av_sigma, guess_dm_sigma))
             
 
 class objectCollectionPhotometry(object):
 
     def __init__(self, paramDict):
 
+        self.paramDict = paramDict
         self.objNames = paramDict['objList'].keys()
         self.nObj = len(self.objNames)
-
         self.nObjParams = 4  # increase this if additional per-object variables need to be added, eg Rv
         self.objPhot = {}
         self.objSlice = {}
-
+ 
         print(self.objNames)
         for (i, objName) in enumerate(self.objNames):
             iLo = i*self.nObjParams
@@ -172,15 +189,25 @@ class objectCollectionPhotometry(object):
                 assert checkNbands == self.nBands
 
         self.ZpSlice = np.s_[iHi:iHi+self.nBands]
+        self.nParams = self.nObj*self.nObjParams + self.nBands
+        self.lowerBounds = np.zeros((self.nParams))
+        self.upperBounds = np.zeros((self.nParams))
+        for (i, objName) in enumerate(self.objNames):
+            self.lowerBounds[self.objSlice[objName]] = self.objPhot[objName].lowerBounds
+            self.upperBounds[self.objSlice[objName]] = self.objPhot[objName].upperBounds
+
+        self.lowerBounds[self.ZpSlice], self.upperBounds[self.ZpSlice]  = paramDict['deltaZp']['bounds']
 
     # return an initial guess at theta
     
     def firstGuess(self):
         self.guess = np.zeros((self.nObj*self.nObjParams + self.nBands))
+        self.guess_sigma = np.zeros((self.nObj*self.nObjParams + self.nBands))
         for objName in self.objNames:
-            self.guess[self.objSlice[objName]] = self.objPhot[objName].firstGuess()
+            self.guess[self.objSlice[objName]], self.guess_sigma[self.objSlice[objName]]  = self.objPhot[objName].firstGuess()
 
         self.guess[self.ZpSlice] = 0
+        self.guess_sigma[self.ZpSlice] = 1.0  # need to set this with a parameter
 
     
     # this is what's called by emcee EnsembleSampler to get the logPosterior
@@ -195,6 +222,8 @@ class objectCollectionPhotometry(object):
             (teff, logg, Av, dm) = theta[self.objSlice[objName]]
             logPost += self.objPhot[objName].logPost(teff, logg, Av, dm, deltaZp)
 
+        print(theta)
+        print(logPost)
         return logPost # + prior for deltaZp
     
         
@@ -210,13 +239,24 @@ def setupPhotEnv(pbPath):
 
     passband = importlib.import_module('passband')
 
-# borrow heavily from GN's code in fit.py for this part
+def enforceBounds(pos, lb, ub):
+#    print('bounds:',lb,ub)
+#    print('before:', pos)
+    (nVec, lenVec) = pos.shape
+    for n in range(nVec):
+        pos[n,:] = np.maximum(pos[n,:], lb)
+        pos[n,:] = np.minimum(pos[n,:], ub)
 
-#def doMCMC(paramDict, objCollection):
+#    print('after:', pos)
+    return pos
+
+def doMCMC(objCollection):
     # get MCMC params out of paramDict
-
+    nwalkers = objCollection.paramDict['nwalkers']
+    nburnin = objCollection.paramDict['nburnin']
+    
     # initialize chains
-'''
+    '''
     # get the starting position and the scales for each parameter
     init_p0  = lnlike.get_parameter_dict()
     p0       = list(init_p0.values())
@@ -232,9 +272,17 @@ def setupPhotEnv(pbPath):
                 a=ascale,  pool=pool)
         ntemps = 1
 
-'''
+    '''
+    objCollection.firstGuess()
+    pos = emcee.utils.sample_ball(objCollection.guess, objCollection.guess_sigma, size=nwalkers)
+    pos = enforceBounds(pos, objCollection.lowerBounds, objCollection.upperBounds) 
+    
     # burnin
-'''
+    print('starting burnin')
+    sampler = emcee.EnsembleSampler(nwalkers, objCollection.nParams, objCollection)  # note that objCollection() returns the posterior
+    sampler.run_mcmc(pos, nburnin, progress=True)
+    print('burnin finished')
+    '''
     if not resume:
         with progress.Bar(label="Burn-in", expected_size=nburnin, hide=False) as bar:
             bar.show(0)
@@ -268,9 +316,9 @@ def setupPhotEnv(pbPath):
         try:
             pos = result[0]
         except TypeError:
-'''
+    '''
     # production sample
-'''
+    '''
     with progress.Bar(label="Production", expected_size=laststep+nprod, hide=False) as bar:
         bar.show(laststep)
         j = laststep
@@ -325,9 +373,9 @@ def setupPhotEnv(pbPath):
     # finalize the chain file, close it and close the pool
     outf.flush()
     outf.close()
-'''
+    '''
     # output
-'''
+    '''
     # find the MAP value after production
     map_samples = samples.reshape(ntemps, nwalkers, laststep+nprod, nparam)
     map_samples_lnprob = samples_lnprob.reshape(ntemps, nwalkers, laststep+nprod)
@@ -347,8 +395,9 @@ def setupPhotEnv(pbPath):
 
     # return the parameter names of the chain, the positions, posterior, and the shape of the chain
     return  free_param_names, samples, samples_lnprob, everyn, (ntemps, nwalkers, laststep+nprod, nparam)
-'''
+    '''
 
+    return pos
 
 def main(paramFileName, pbPath = None):
 
