@@ -69,6 +69,7 @@ import emcee
 class objectPhotometry(object):
     def __init__(self, objName, paramDict):
         self.objName = objName
+        self.paramDict = paramDict
         objList = paramDict['objList']
         if objList is None:
             print('objectPhotometry init: objlist not in paramDict')
@@ -109,7 +110,17 @@ class objectPhotometry(object):
         self.logg_cov = colDict['logg_cov'].data[0]
         self.tloggPrior = normal2D.normal2D(1.0, self.teff_0, self.logg_0, self.teff_cov, self.teff_logg_cov, self.logg_cov)
 
-    def logPrior(self, teff, logg, Av, dm):
+    def logPrior(self, teff, logg, av, dm):
+        # any parameter out of bounds, return -np.inf
+        if teff < self.teff_lb or teff > self.teff_ub:
+            return -np.inf
+        if logg < self.logg_lb or logg > self.logg_ub:
+            return -np.inf
+        if av < self.av_lb or av > self.av_ub:
+            return -np.inf
+        if dm < self.dm_lb or dm > self.dm_ub:
+            return -np.inf
+        
         # evaluate the 2D normal
         return -np.log(self.tloggPrior.pdf(teff, logg))
 
@@ -126,7 +137,12 @@ class objectPhotometry(object):
         return np.sum(-((self.phot['mag']-self.synMags['mag'])/self.phot['mag_err'])**2)
 
     def logPost(self, teff, logg, Av, dm, deltaZp):
-        return self.logLikelihood(teff, logg, Av, dm, deltaZp) + self.logPrior(teff, logg, Av, dm)
+
+        prior =  self.logPrior(teff, logg, Av, dm)
+        if not np.isfinite(prior):
+            return -np.inf
+        
+        return self.logLikelihood(teff, logg, Av, dm, deltaZp) + prior
 
     def firstGuess(self):
 
@@ -222,8 +238,8 @@ class objectCollectionPhotometry(object):
             (teff, logg, Av, dm) = theta[self.objSlice[objName]]
             logPost += self.objPhot[objName].logPost(teff, logg, Av, dm, deltaZp)
 
-        print(theta)
-        print(logPost)
+#        print(theta)
+#        print(logPost)
         return logPost # + prior for deltaZp
     
         
@@ -240,14 +256,12 @@ def setupPhotEnv(pbPath):
     passband = importlib.import_module('passband')
 
 def enforceBounds(pos, lb, ub):
-#    print('bounds:',lb,ub)
-#    print('before:', pos)
+
     (nVec, lenVec) = pos.shape
     for n in range(nVec):
         pos[n,:] = np.maximum(pos[n,:], lb)
         pos[n,:] = np.minimum(pos[n,:], ub)
 
-#    print('after:', pos)
     return pos
 
 def doMCMC(objCollection):
@@ -282,36 +296,26 @@ def doMCMC(objCollection):
     sampler = emcee.EnsembleSampler(nwalkers, objCollection.nParams, objCollection)  # note that objCollection() returns the posterior
     sampler.run_mcmc(pos, nburnin, progress=True)
     print('burnin finished')
+
+    # find the MAP position after the burnin
+
+    nparam = objCollection.nParams
+    samples        = sampler.flatchain
+    samples_lnprob = sampler.lnprobability
+    map_samples        = samples.reshape(nwalkers, nburnin, nparam)
+    map_samples_lnprob = samples_lnprob.reshape(nwalkers, nburnin)
+    max_ind        = np.argmax(map_samples_lnprob)
+    max_ind        = np.unravel_index(max_ind, (nwalkers, nburnin))
+    max_ind        = tuple(max_ind)
+    p1        = map_samples[max_ind]
+
+    # reset the sampler
+    sampler.reset()
+
+    message = "\nMAP Parameters after Burn-in"
+    print(message)
+    print(p1)
     '''
-    if not resume:
-        with progress.Bar(label="Burn-in", expected_size=nburnin, hide=False) as bar:
-            bar.show(0)
-            j = 0
-            for i, result in enumerate(sampler.sample(pos, iterations=thin*nburnin, **sampler_kwargs)):
-                if (i+1)%thin == 0:
-                    bar.show(j+1)
-                    j+=1
-
-        # find the MAP position after the burnin
-        samples        = sampler.flatchain
-        samples_lnprob = sampler.lnprobability
-        map_samples        = samples.reshape(ntemps, nwalkers, nburnin, nparam)
-        map_samples_lnprob = samples_lnprob.reshape(ntemps, nwalkers, nburnin)
-        max_ind        = np.argmax(map_samples_lnprob)
-        max_ind        = np.unravel_index(max_ind, (ntemps, nwalkers, nburnin))
-        max_ind        = tuple(max_ind)
-        p1        = map_samples[max_ind]
-
-        # reset the sampler
-        sampler.reset()
-
-        lnlike.set_parameter_vector(p1)
-        message = "\nMAP Parameters after Burn-in"
-        print(message)
-        for k, v in lnlike.get_parameter_dict().items():
-            message = "{} = {:f}".format(k,v)
-            print(message)
-
         # set walkers to start production at final burnin state
         try:
             pos = result[0]
