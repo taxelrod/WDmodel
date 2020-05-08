@@ -3,9 +3,11 @@ from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 
 class normal2D(object):
-    def __init__(self, scale, mu0, mu1, cov00, cov01, cov11):
+    def __init__(self, scale, mu0, mu1, s0, s1, thetaCov):
         self.mu = np.array([mu0, mu1])
-        self.cov = np.array([[cov00, cov01], [cov01, cov11]])
+        self.u = np.array([[np.cos(thetaCov), np.sin(thetaCov)],[np.sin(thetaCov), -np.cos(thetaCov)]])
+        self.s = np.diag([s0, s1])
+        self.cov = np.matmul(self.u, np.matmul(self.s, self.u))
         self.invCov = np.linalg.inv(self.cov)
         self.detCov = np.linalg.det(self.cov)
         self.const = scale/(2*np.pi) * 1./np.sqrt(self.detCov)
@@ -37,14 +39,14 @@ def binSamples(xPoints, yPoints, nxBins, nyBins, sigWidth=2.0):
 
 def normal2DObjFunc(normalParams, dataHisto, xEdges, yEdges, debug=True):
     
-    (scale, mu0, mu1, cov00, cov01, cov11) = normalParams
-    n2d = normal2D(scale, mu0, mu1, cov00, cov01, cov11)
+    (scale, mu0, mu1, s0, s1, thetaCov) = normalParams
+    n2d = normal2D(scale, mu0, mu1, s0, s1, thetaCov)
     obj = 0
     for i,x in enumerate(xEdges):
         for j,y in enumerate(yEdges):
             obj += (n2d.pdf(x, y) - dataHisto[i, j])**2
     if debug:
-        print(obj, scale, mu0, mu1, cov00, cov01, cov11)
+        print(obj, scale, mu0, mu1, s0, s1, thetaCov)
     return obj
 
 #def fitnormal2D(samples, sampleParams, xname, yname):
@@ -55,22 +57,34 @@ def fitNormal2D(xSamples, ySamples, nxBins=50, nyBins=50, debug=False):
 
     scale = 1
     mu0 = np.mean(xSamples)
-    cov00 = np.var(xSamples)
-    cov01 = 0
     mu1 = np.mean(ySamples)
-    cov11 = np.var(ySamples)
-
-    cov00Min = 0.02*cov00
-    cov11Min = 0.02*cov11               
     
-    guessParams = (scale, mu0, mu1, cov00, cov01, cov11) 
-    minResult = minimize(normal2DObjFunc, guessParams, method='L-BFGS-B', bounds=((0, None), (None, None), (None, None) , (cov00Min, None), (None, None), (cov11Min, None)), args=(sampleHisto, xCen, yCen), options={'gtol':1.0e-7})
+    cov = np.cov(np.vstack((xSamples, ySamples)))
+    print(cov)
+    # use svd to decompose cov into u x s x vh
+    # u and vh are (identical) reflection matrices, parameterized by thetaCov, s is a diagonal scale matrix
+    # see https://en.wikipedia.org/wiki/Rotations_and_reflections_in_two_dimensions
+    
+    u, s, vh = np.linalg.svd(cov)
+    thetaCov = np.arcsin(u[0,1])
+    s0 = s[0]
+    s1 = s[1]
+    
+
+#    cov11 = np.var(ySamples)
+
+    s0Min = 0.02*s0
+    s1Min = 0.02*s1
+    
+    guessParams = (scale, mu0, mu1, s0, s1, thetaCov) 
+    minResult = minimize(normal2DObjFunc, guessParams, method='L-BFGS-B', bounds=((0, None), (None, None), (None, None) , (s0Min, None), (s1Min, None), (-2*np.pi, 2*np.pi)), args=(sampleHisto, xCen, yCen), options={'gtol':1.0e-7})
 
     if debug:
-        (scale, mu0, mu1, cov00, cov01, cov11) = minResult.x
-        fit2D = normal2D(scale, mu0, mu1, cov00, cov01, cov11)
+        (scale, mu0, mu1, s0, s1, thetaCov) = minResult.x
+        fit2D = normal2D(scale, mu0, mu1, s0, s1, thetaCov)
         return minResult, fit2D
     else:
+        print(minResult)
         return minResult.x
 
 def plotHisto2D(histo, xCen, yCen):
@@ -88,4 +102,4 @@ def plotNormal2D(n2d, x, y):
         
     plt.contour(x,y,z)
     plt.show()
-    return z
+#    return z
