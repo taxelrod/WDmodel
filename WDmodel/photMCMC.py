@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 Fit photometry of all objects simultaneously, using Teff-logg priors from previous
 per-object spectrum analysis
@@ -67,7 +68,10 @@ import emcee
 # objectPhotometry encapsulates all photometric data and fit results for a WD
 
 class objectPhotometry(object):
-    def __init__(self, objName, paramDict):
+    def __init__(self, objName=None, paramDict=None):
+        if objName is None:
+            return
+        
         self.objName = objName
         self.paramDict = paramDict
         objList = paramDict['objList']
@@ -99,16 +103,18 @@ class objectPhotometry(object):
         self.nBands = len(self.phot.pb)
         self.pb = passband.get_pbmodel(self.phot.pb,self.model,  None)
 
-    def initPrior(self):
+    def initPrior(self, tloggFileName=None):
+        if tloggFileName is not None:
+            self.tloggFileName = tloggFileName
         # read the tloggfile, setup the 2Dnormal based on its parameters
         self.tloggTable = Table.read(self.tloggFileName, format='ascii')
         colDict = self.tloggTable.columns
         self.teff_0 = colDict['teff_0'].data[0]
         self.logg_0 = colDict['logg_0'].data[0]
         self.teff_cov = colDict['teff_cov'].data[0]
-        self.teff_logg_cov = colDict['teff_logg_cov'].data[0]
+        self.theta_cov = colDict['theta_cov'].data[0]
         self.logg_cov = colDict['logg_cov'].data[0]
-        self.tloggPrior = normal2D.normal2D(1.0, self.teff_0, self.logg_0, self.teff_cov, self.teff_logg_cov, self.logg_cov)
+        self.tloggPrior = normal2D.normal2D(1.0, self.teff_0, self.logg_0, self.teff_cov, self.logg_cov, self.theta_cov)
 
     def logPrior(self, teff, logg, av, dm):
         # any parameter out of bounds, return -np.inf
@@ -413,7 +419,7 @@ def main(paramFileName, pbPath = None):
 
     objCollection = objectCollectionPhotometry(paramDict)
 
-#    doMCMC(paramDict, objCollection)
+    doMCMC(objCollection)
 
     return objCollection
 
