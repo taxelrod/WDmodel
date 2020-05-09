@@ -145,6 +145,7 @@ class objectPhotometry(object):
     def logPost(self, teff, logg, Av, dm, deltaZp):
 
         prior =  self.logPrior(teff, logg, Av, dm)
+
         if not np.isfinite(prior):
             return -np.inf
         
@@ -210,8 +211,8 @@ class objectCollectionPhotometry(object):
                 checkNbands = len(self.objPhot[objName].pb)
                 assert checkNbands == self.nBands
 
-        self.ZpSlice = np.s_[iHi:iHi+self.nBands]
-        self.nParams = self.nObj*self.nObjParams + self.nBands
+        self.ZpSlice = np.s_[iHi:iHi+self.nBands-1]  # last element of deltaZp is not explicitly carried because deltaZp sume to 0
+        self.nParams = self.nObj*self.nObjParams + self.nBands - 1
         self.lowerBounds = np.zeros((self.nParams))
         self.upperBounds = np.zeros((self.nParams))
         for (i, objName) in enumerate(self.objNames):
@@ -223,8 +224,8 @@ class objectCollectionPhotometry(object):
     # return an initial guess at theta
     
     def firstGuess(self):
-        self.guess = np.zeros((self.nObj*self.nObjParams + self.nBands))
-        self.guess_sigma = np.zeros((self.nObj*self.nObjParams + self.nBands))
+        self.guess = np.zeros((self.nParams))
+        self.guess_sigma = np.zeros((self.nParams))
         for objName in self.objNames:
             self.guess[self.objSlice[objName]], self.guess_sigma[self.objSlice[objName]]  = self.objPhot[objName].firstGuess()
 
@@ -238,14 +239,13 @@ class objectCollectionPhotometry(object):
         # unpack theta into self.nObj arrays of 4, to be interpreted by each objPhot + an array of length self.nBands, which
         # becomes deltaZp
 
-        deltaZp = theta[self.ZpSlice]
+        deltaZp = np.resize(theta[self.ZpSlice], (self.nBands)) # extend by one element, set last element to enforce sum(deltaZp) = 0
+        deltaZp[-1] = -np.sum(theta[self.ZpSlice])
         logPost = 0
         for objName in self.objNames:
             (teff, logg, Av, dm) = theta[self.objSlice[objName]]
             logPost += self.objPhot[objName].logPost(teff, logg, Av, dm, deltaZp)
 
-#        print(theta)
-#        print(logPost)
         return logPost # + prior for deltaZp
     
         
