@@ -64,6 +64,7 @@ from astropy.table import Table
 import normal2D
 import WDmodel
 import emcee
+import h5py
 
 # objectPhotometry encapsulates all photometric data and fit results for a WD
 
@@ -274,25 +275,13 @@ def doMCMC(objCollection):
     # get MCMC params out of paramDict
     nwalkers = objCollection.paramDict['nwalkers']
     nburnin = objCollection.paramDict['nburnin']
+    nprod = objCollection.paramDict['nprod']
+
+    outFileName = objCollection.paramDict['output_file']
+    outf = h5py.File(outFileName, 'w')
     
     # initialize chains
-    '''
-    # get the starting position and the scales for each parameter
-    init_p0  = lnlike.get_parameter_dict()
-    p0       = list(init_p0.values())
-    free_param_names = list(init_p0.keys())
-    std = [params[x]['scale'] for x in free_param_names]
 
-    # create a sample ball
-    pos = emcee.utils.sample_ball(p0, std, size=ntemps*nwalkers)
-    pos = fix_pos(pos, free_param_names, params)
-
-    if samptype == 'ensemble':
-        sampler = emcee.EnsembleSampler(nwalkers, nparam, lnpost,\
-                a=ascale,  pool=pool)
-        ntemps = 1
-
-    '''
     objCollection.firstGuess()
     pos = emcee.utils.sample_ball(objCollection.guess, objCollection.guess_sigma, size=nwalkers)
     pos = enforceBounds(pos, objCollection.lowerBounds, objCollection.upperBounds) 
@@ -300,14 +289,14 @@ def doMCMC(objCollection):
     # burnin
     print('starting burnin')
     sampler = emcee.EnsembleSampler(nwalkers, objCollection.nParams, objCollection)  # note that objCollection() returns the posterior
-    sampler.run_mcmc(pos, nburnin, progress=True)
+    result = sampler.run_mcmc(pos, nburnin, progress=True)
     print('burnin finished')
 
     # find the MAP position after the burnin
 
     nparam = objCollection.nParams
-    samples        = sampler.flatchain
-    samples_lnprob = sampler.lnprobability
+    samples        = sampler.get_chain(flat=True)
+    samples_lnprob = sampler.get_log_prob(flat=True)
     map_samples        = samples.reshape(nwalkers, nburnin, nparam)
     map_samples_lnprob = samples_lnprob.reshape(nwalkers, nburnin)
     max_ind        = np.argmax(map_samples_lnprob)
@@ -321,13 +310,42 @@ def doMCMC(objCollection):
     message = "\nMAP Parameters after Burn-in"
     print(message)
     print(p1)
+
+    # set up output for chains
+
+    chain = outf.create_group("chain")
     '''
-        # set walkers to start production at final burnin state
-        try:
-            pos = result[0]
-        except TypeError:
+    # save the parameter names corresponding to the chain
+    free_param_names = np.array([str(x) for x in free_param_names])
+    dt = free_param_names.dtype.str.lstrip('|').replace('U','S')
+    chain.create_dataset("names",data=free_param_names.astype(np.string_), dtype=dt)
     '''
+
+
+    # set walkers to start production at final burnin state
+    pos = result.coords
+    
+    # write to disk before we start
+    outf.flush()
+
+    # since we're going to save the chain in HDF5, we don't need to save it in memory elsewhere
+    # funny stuff to maintain backward compatibility with emcee2.x
+    
     # production sample
+
+    result = sampler.run_mcmc(pos, nprod, progress=True, store=True)
+    samples        = sampler.get_chain(flat=True)
+    samples_lnprob = sampler.get_log_prob(flat=True)
+    
+    print('production finished')
+    
+    dset_chain  = chain.create_dataset("position",(nwalkers*nprod,nparam),maxshape=(None,nparam), data=samples)
+    dset_lnprob = chain.create_dataset("lnprob",(nwalkers*nprod,),maxshape=(None,), data=samples_lnprob)
+
+    outf.flush()
+    outf.close()
+    return
+   
     '''
     with progress.Bar(label="Production", expected_size=laststep+nprod, hide=False) as bar:
         bar.show(laststep)
