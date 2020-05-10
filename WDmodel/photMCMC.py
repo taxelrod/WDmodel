@@ -344,88 +344,23 @@ def doMCMC(objCollection):
 
     outf.flush()
     outf.close()
-    return
-   
-    '''
-    with progress.Bar(label="Production", expected_size=laststep+nprod, hide=False) as bar:
-        bar.show(laststep)
-        j = laststep
-        for i, result in enumerate(sampler.sample(pos, iterations=thin*nprod, **sampler_kwargs)):
-            if (i+1)%thin != 0:
-                continue
-            try:
-                position = result[0]
-                lnpost   = result[1]
-            except:
-                position = result.coords
-                lnpost   = result.log_prob
-                
-            position = position.reshape((-1, nparam))
-            lnpost   = lnpost.reshape(ntemps*nwalkers)
-            dset_chain[ntemps*nwalkers*j:ntemps*nwalkers*(j+1),:] = position
-            dset_lnprob[ntemps*nwalkers*j:ntemps*nwalkers*(j+1)] = lnpost
 
-            # save state every 100 steps
-            if (j+1)%100 == 0:
-                # make sure we know how many steps we've taken so that we can resize arrays appropriately
-                chain.attrs["laststep"] = j+1
-                outf.flush()
+    # find the MAP position after the production run
 
-                # save the state of the chain
-                with open(statefile, 'wb') as f:
-                    pickle.dump(result, f, 2)
+    map_samples        = samples.reshape(nwalkers, nprod, nparam)
+    map_samples_lnprob = samples_lnprob.reshape(nwalkers, nprod)
+    max_ind        = np.argmax(map_samples_lnprob)
+    max_ind        = np.unravel_index(max_ind, (nwalkers, nprod))
+    max_ind        = tuple(max_ind)
+    p1        = map_samples[max_ind]
 
-            bar.show(j+1)
-            j+=1
-
-        # save the final state of the chain and nprod, laststep
-        chain.attrs["nprod"]    = laststep+nprod
-        chain.attrs["laststep"] = laststep+nprod
-        with open(statefile, 'wb') as f:
-            pickle.dump(result, f, 2)
-
-    # save the acceptance fraction
-    if resume:
-        if "afrac" in list(chain.keys()):
-            del chain["afrac"]
-        if samptype != 'ensemble':
-            if "tswap_afrac" in list(chain.keys()):
-                del chain["tswap_afrac"]
-    chain.create_dataset("afrac", data=sampler.acceptance_fraction)
-    if samptype != 'ensemble' and ntemps > 1:
-        chain.create_dataset("tswap_afrac", data=sampler.tswap_acceptance_fraction)
-
-    samples         = np.array(dset_chain)
-    samples_lnprob  = np.array(dset_lnprob)
-
-    # finalize the chain file, close it and close the pool
-    outf.flush()
-    outf.close()
-    '''
-    # output
-    '''
-    # find the MAP value after production
-    map_samples = samples.reshape(ntemps, nwalkers, laststep+nprod, nparam)
-    map_samples_lnprob = samples_lnprob.reshape(ntemps, nwalkers, laststep+nprod)
-    max_ind = np.argmax(map_samples_lnprob)
-    max_ind = np.unravel_index(max_ind, (ntemps, nwalkers, laststep+nprod))
-    max_ind = tuple(max_ind)
-    p_final = map_samples[max_ind]
-    lnlike.set_parameter_vector(p_final)
     message = "\nMAP Parameters after Production"
     print(message)
+    print(p1)
 
-    for k, v in lnlike.get_parameter_dict().items():
-        message = "{} = {:f}".format(k,v)
-        print(message)
-    message = "Mean acceptance fraction: {0:.3f}".format(np.mean(sampler.acceptance_fraction))
-    print(message)
+    return
+   
 
-    # return the parameter names of the chain, the positions, posterior, and the shape of the chain
-    return  free_param_names, samples, samples_lnprob, everyn, (ntemps, nwalkers, laststep+nprod, nparam)
-    '''
-
-    return pos
 
 def main(paramFileName, pbPath = None):
 
