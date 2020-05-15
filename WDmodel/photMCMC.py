@@ -333,7 +333,7 @@ def doMCMC(objCollection):
     
     # production sample
 
-    result = sampler.run_mcmc(pos, nprod, progress=True, store=True)
+    result = sampler.run_mcmc(pos, nprod, progress=True, store=True, skip_initial_state_check=True)
     samples        = sampler.get_chain(flat=True)
     samples_lnprob = sampler.get_log_prob(flat=True)
     
