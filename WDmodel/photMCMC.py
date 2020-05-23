@@ -16,44 +16,6 @@ How to handle missing bands - for some objects only?
 
 """
 
-"""
-1 ------------
-for objname in objList:
-   phot = io.get_phot_for_obj(objname, photfile)   # main.py
-
-x -------------
-    pbnames = []
-    if phot is not None:
-        pbnames = np.unique(phot.pb)
-        if excludepb is not None:
-            pbnames = list(set(pbnames) - set(excludepb))
-
-        # filter the photometry recarray to use only the passbands we want
-        useind = [x for x, pb in enumerate(phot.pb) if pb in pbnames]
-        useind = np.array(useind)
-        phot = phot.take(useind)
-
-        # set the pbnames from the trimmed photometry recarray to preserve order
-        pbnames = list(phot.pb)
-
-    pbs = passband.get_pbmodel(pbnames, model, pbfile=pbfile)  # main.py
-
-3 ------------
-    mod_spec = model._get_obs_model(self.teff, self.logg, self.av_spec, self.fwhm,\   # likelihood.py WDmodel_Likelihood.get_value()
-            spec.wave, rv=self.rv, pixel_scale=pixel_scale)
-    mod_phot, full = model._get_full_obs_model(self.teff, self.logg, self.av, self.fwhm,\
-            spec.wave, rv=self.rv, pixel_scale=pixel_scale)
-    mod_mags = get_model_synmags(full, pbs, mu=self.mu)
-    phot_res = phot.mag - mod_mags.mag
-    phot_chi = np.sum(phot_res**2./((phot.mag_err**2.)+(phot_dispersion**2.)))
-
-====
-
-Overall likelihood(theta) needs to unpack components into groups for each object (is this a use for rec.array?) + those common to all (deltaZp)
-
-Must require same bands for all objects - check after instantiating all objects
-"""
-
 import json
 import importlib
 import ioWD
@@ -92,10 +54,9 @@ class objectPhotometry(object):
         self.teff_lb, self.teff_ub = paramDict['teff']['bounds']
         self.logg_lb, self.logg_ub = paramDict['logg']['bounds']
         self.av_lb, self.av_ub = paramDict['av']['bounds']
-        self.dm_lb, self.dm_ub = paramDict['dm']['bounds']
 
-        self.lowerBounds = np.array((self.teff_lb, self.logg_lb, self.av_lb, self.dm_lb))
-        self.upperBounds = np.array((self.teff_ub, self.logg_ub, self.av_ub, self.dm_ub))
+        self.lowerBounds = np.array((self.teff_lb, self.logg_lb, self.av_lb))
+        self.upperBounds = np.array((self.teff_ub, self.logg_ub, self.av_ub))
             
 
     def loadPhotometry(self):
@@ -117,7 +78,7 @@ class objectPhotometry(object):
         self.logg_cov = colDict['logg_cov'].data[0]
         self.tloggPrior = normal2D.normal2D(1.0, self.teff_0, self.logg_0, self.teff_cov, self.logg_cov, self.theta_cov)
 
-    def logPrior(self, teff, logg, av, dm):
+    def logPrior(self, teff, logg, av):
         # any parameter out of bounds, return -np.inf
         if teff < self.teff_lb or teff > self.teff_ub:
             return -np.inf
@@ -125,32 +86,36 @@ class objectPhotometry(object):
             return -np.inf
         if av < self.av_lb or av > self.av_ub:
             return -np.inf
-        if dm < self.dm_lb or dm > self.dm_ub:
-            return -np.inf
         
         # evaluate the 2D normal
         return -np.log(self.tloggPrior.pdf(teff, logg))
 
-    def calcSynMags(self, teff, logg, Av, dm, deltaZp):
+    def calcSynMags(self, teff, logg, Av, deltaZp):
         modelSed = self.model._get_model(teff, logg)
         modelSed = self.model.reddening(self.model._wave, modelSed, Av)
         sedPack = np.rec.array([self.model._wave, modelSed], dtype=[('wave', '<f8'), ('flux', '<f8')])
                         # needed due to GN interface inconsistency
         self.synMags = passband.get_model_synmags(sedPack, self.pb) # recarray with dtype=[('pb', '<U5'), ('mag', '<f8')])
-        self.synMags['mag'] += dm + deltaZp
+        self.synMags['mag'] += deltaZp
+        self.optDM = np.sum((self.phot['mag']-self.synMags['mag'])/self.phot['mag_err']**2)/np.sum(1./self.phot['mag_err']**2)
+        self.synMags['mag'] += self.optDM
 
-    def logLikelihood(self, teff, logg, Av, dm, deltaZp):
-        self.calcSynMags(teff, logg, Av, dm, deltaZp)
+    def logLikelihood(self, teff, logg, Av, deltaZp):
+        self.calcSynMags(teff, logg, Av, deltaZp)
         return np.sum(-((self.phot['mag']-self.synMags['mag'])/self.phot['mag_err'])**2)
 
-    def logPost(self, teff, logg, Av, dm, deltaZp):
+    def logPost(self, teff, logg, Av, deltaZp):
 
-        prior =  self.logPrior(teff, logg, Av, dm)
+        self.teff = teff
+        self.logg = logg
+        self.Av = Av
+
+        prior =  self.logPrior(teff, logg, Av)
 
         if not np.isfinite(prior):
             return -np.inf
         
-        return self.logLikelihood(teff, logg, Av, dm, deltaZp) + prior
+        return self.logLikelihood(teff, logg, Av, deltaZp) + prior
 
     def firstGuess(self):
 
@@ -175,16 +140,8 @@ class objectPhotometry(object):
             guess_Av = 0
             guess_Av_sigma = 0.5
 
-        try:
-            guess_dm = self.objParams['guess_dm']
-            guess_dm_sigma = self.objParams['guess_dm_sigma']
-        except KeyError:
-            self.calcSynMags(guess_teff, guess_logg, guess_Av, 0, np.zeros((self.nBands)))
-            guess_dm = np.mean(self.phot.mag - self.synMags.mag)
-            guess_dm_sigma = np.std(self.phot.mag - self.synMags.mag)
-
-        return np.array((guess_teff, guess_logg, guess_Av, guess_dm)), \
-            np.array((guess_teff_sigma, guess_logg_sigma, guess_Av_sigma, guess_dm_sigma))
+        return np.array((guess_teff, guess_logg, guess_Av)), \
+            np.array((guess_teff_sigma, guess_logg_sigma, guess_Av_sigma))
             
 
 class objectCollectionPhotometry(object):
@@ -194,7 +151,7 @@ class objectCollectionPhotometry(object):
         self.paramDict = paramDict
         self.objNames = paramDict['objList'].keys()
         self.nObj = len(self.objNames)
-        self.nObjParams = 4  # increase this if additional per-object variables need to be added, eg Rv
+        self.nObjParams = 3  # increase this if additional per-object variables need to be added, eg Rv
         self.objPhot = {}
         self.objSlice = {}
  
@@ -237,15 +194,15 @@ class objectCollectionPhotometry(object):
     # this is what's called by emcee EnsembleSampler to get the logPosterior
 
     def __call__(self, theta):
-        # unpack theta into self.nObj arrays of 4, to be interpreted by each objPhot + an array of length self.nBands, which
+        # unpack theta into self.nObj arrays of 3, to be interpreted by each objPhot + an array of length self.nBands, which
         # becomes deltaZp
 
         deltaZp = np.resize(theta[self.ZpSlice], (self.nBands)) # extend by one element, set last element to enforce sum(deltaZp) = 0
         deltaZp[-1] = -np.sum(theta[self.ZpSlice])
         logPost = 0
         for objName in self.objNames:
-            (teff, logg, Av, dm) = theta[self.objSlice[objName]]
-            logPost += self.objPhot[objName].logPost(teff, logg, Av, dm, deltaZp)
+            (teff, logg, Av) = theta[self.objSlice[objName]]
+            logPost += self.objPhot[objName].logPost(teff, logg, Av, deltaZp)
 
         return logPost # + prior for deltaZp
     
@@ -310,6 +267,7 @@ def doMCMC(objCollection):
     message = "\nMAP Parameters after Burn-in"
     print(message)
     print(p1)
+    printResult(objCollection)
 
     # set up output for chains
 
@@ -357,9 +315,14 @@ def doMCMC(objCollection):
     message = "\nMAP Parameters after Production"
     print(message)
     print(p1)
+    printResult(objCollection)
 
     return
    
+def printResult(objCollection):
+    for objName in objCollection.objNames:
+        obj = objCollection.objPhot[objName]
+        print(objName, 'Teff=', obj.teff, 'logg=', obj.logg, 'Av=', obj.Av, 'DM=', obj.optDM)
 
 
 def main(paramFileName, pbPath = None):
