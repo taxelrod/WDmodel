@@ -17,6 +17,7 @@ How to handle missing bands - for some objects only?
 """
 
 import json
+import pickle
 import importlib
 import ioWD
 import os
@@ -53,7 +54,10 @@ class objectPhotometry(object):
 
         self.teff_lb, self.teff_ub = paramDict['teff']['bounds']
         self.logg_lb, self.logg_ub = paramDict['logg']['bounds']
-        self.av_lb, self.av_ub = paramDict['av']['bounds']
+        try:
+            self.av_lb, self.av_ub = objList[objName]['av']['bounds'] # use bounds specific for this object if present
+        except KeyError:
+            self.av_lb, self.av_ub = paramDict['av']['bounds'] # else use global bounds
 
         self.lowerBounds = np.array((self.teff_lb, self.logg_lb, self.av_lb))
         self.upperBounds = np.array((self.teff_ub, self.logg_ub, self.av_ub))
@@ -149,7 +153,7 @@ class objectCollectionPhotometry(object):
     def __init__(self, paramDict):
 
         self.paramDict = paramDict
-        self.objNames = paramDict['objList'].keys()
+        self.objNames = list(paramDict['objList'])  # keeps it pickleable
         self.nObj = len(self.objNames)
         self.nObjParams = 3  # increase this if additional per-object variables need to be added, eg Rv
         self.objPhot = {}
@@ -236,6 +240,8 @@ def doMCMC(objCollection):
 
     outFileName = objCollection.paramDict['output_file']
     outf = h5py.File(outFileName, 'w')
+
+    pickleFileName = objCollection.paramDict['pickle_file']
     
     # initialize chains
 
@@ -259,15 +265,15 @@ def doMCMC(objCollection):
     max_ind        = np.argmax(map_samples_lnprob)
     max_ind        = np.unravel_index(max_ind, (nwalkers, nburnin))
     max_ind        = tuple(max_ind)
-    p1        = map_samples[max_ind]
+    theta        = map_samples[max_ind]
 
     # reset the sampler
     sampler.reset()
 
     message = "\nMAP Parameters after Burn-in"
     print(message)
-    print(p1)
-    printResult(objCollection)
+    print(theta)
+    outputResult(objCollection, theta, None)
 
     # set up output for chains
 
@@ -310,19 +316,27 @@ def doMCMC(objCollection):
     max_ind        = np.argmax(map_samples_lnprob)
     max_ind        = np.unravel_index(max_ind, (nwalkers, nprod))
     max_ind        = tuple(max_ind)
-    p1        = map_samples[max_ind]
+    theta        = map_samples[max_ind]
 
     message = "\nMAP Parameters after Production"
     print(message)
-    print(p1)
-    printResult(objCollection)
+    print(theta)
+    outputResult(objCollection, theta, pickleFileName)
 
     return
    
-def printResult(objCollection):
+def outputResult(objCollection, theta, pickleFileName):
+
+    lnPost = objCollection(theta)
+    print('lnPost=', lnPost)
     for objName in objCollection.objNames:
         obj = objCollection.objPhot[objName]
-        print(objName, 'Teff=', obj.teff, 'logg=', obj.logg, 'Av=', obj.Av, 'DM=', obj.optDM)
+        print(objName, 'Teff=', obj.teff, 'logg=', obj.logg, 'Av=', obj.Av, 'DM=', obj.optDM, 'mag-synmag=', obj.phot['mag']-obj.synMags['mag'])
+
+    if pickleFileName is not None:
+        fpkl = open(pickleFileName, 'wb')
+        pickle.dump(objCollection, fpkl)
+        fpkl.close()
 
 
 def main(paramFileName, pbPath = None):
