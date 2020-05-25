@@ -117,9 +117,11 @@ class objectPhotometry(object):
         prior =  self.logPrior(teff, logg, Av)
 
         if not np.isfinite(prior):
-            return -np.inf
+            return -np.inf, None
         
-        return self.logLikelihood(teff, logg, Av, deltaZp) + prior
+        logLikelihood = self.logLikelihood(teff, logg, Av, deltaZp)
+        blob = self.phot['mag']-self.synMags['mag']
+        return logLikelihood + prior, blob
 
     def firstGuess(self):
 
@@ -158,6 +160,7 @@ class objectCollectionPhotometry(object):
         self.nObjParams = 3  # increase this if additional per-object variables need to be added, eg Rv
         self.objPhot = {}
         self.objSlice = {}
+        self.blobSlice = {}
  
         print(self.objNames)
         for (i, objName) in enumerate(self.objNames):
@@ -172,6 +175,10 @@ class objectCollectionPhotometry(object):
             else:
                 checkNbands = len(self.objPhot[objName].pb)
                 assert checkNbands == self.nBands
+            jLo = i*self.nBands
+            jHi = jLo + self.nBands
+            self.blobSlice[objName] = np.s_[jLo:jHi]
+
 
         self.ZpSlice = np.s_[iHi:iHi+self.nBands-1]  # last element of deltaZp is not explicitly carried because deltaZp sume to 0
         self.nParams = self.nObj*self.nObjParams + self.nBands - 1
@@ -204,11 +211,17 @@ class objectCollectionPhotometry(object):
         deltaZp = np.resize(theta[self.ZpSlice], (self.nBands)) # extend by one element, set last element to enforce sum(deltaZp) = 0
         deltaZp[-1] = -np.sum(theta[self.ZpSlice])
         logPost = 0
+        blob = np.zeros((self.nObj*self.nBands))
         for objName in self.objNames:
-            (teff, logg, Av) = theta[self.objSlice[objName]]
-            logPost += self.objPhot[objName].logPost(teff, logg, Av, deltaZp)
+            objSlice = self.objSlice[objName]
+            objBlobSlice = self.blobSlice[objName]
+            obj = self.objPhot[objName]
+            (teff, logg, Av) = theta[objSlice]
+            objPost, objBlob = obj.logPost(teff, logg, Av, deltaZp)
+            logPost += objPost
+            blob[objBlobSlice] = objBlob
 
-        return logPost # + prior for deltaZp
+        return logPost, blob # + prior for deltaZp
     
         
 # setupPhotEnv sets the environment variable PYSYN_CDBS prior to importing bandpass
@@ -237,6 +250,8 @@ def doMCMC(objCollection):
     nwalkers = objCollection.paramDict['nwalkers']
     nburnin = objCollection.paramDict['nburnin']
     nprod = objCollection.paramDict['nprod']
+    nbands = objCollection.nBands
+    nobj = objCollection.nObj
 
     outFileName = objCollection.paramDict['output_file']
     outf = h5py.File(outFileName, 'w')
@@ -278,12 +293,6 @@ def doMCMC(objCollection):
     # set up output for chains
 
     chain = outf.create_group("chain")
-    '''
-    # save the parameter names corresponding to the chain
-    free_param_names = np.array([str(x) for x in free_param_names])
-    dt = free_param_names.dtype.str.lstrip('|').replace('U','S')
-    chain.create_dataset("names",data=free_param_names.astype(np.string_), dtype=dt)
-    '''
 
 
     # set walkers to start production at final burnin state
@@ -300,11 +309,14 @@ def doMCMC(objCollection):
     result = sampler.run_mcmc(pos, nprod, progress=True, store=True, skip_initial_state_check=True)
     samples        = sampler.get_chain(flat=True)
     samples_lnprob = sampler.get_log_prob(flat=True)
+    blobs = sampler.get_blobs(flat=True)
+                
     
     print('production finished')
     
     dset_chain  = chain.create_dataset("position",(nwalkers*nprod,nparam),maxshape=(None,nparam), data=samples)
     dset_lnprob = chain.create_dataset("lnprob",(nwalkers*nprod,),maxshape=(None,), data=samples_lnprob)
+    dset_blob = chain.create_dataset("magerr",(nwalkers*nprod,nbands*nobj),maxshape=(None,nbands*nobj), data=blobs)
 
     outf.flush()
     outf.close()
