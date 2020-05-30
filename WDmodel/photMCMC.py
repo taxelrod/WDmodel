@@ -208,6 +208,8 @@ class objectCollectionPhotometry(object):
         # unpack theta into self.nObj arrays of 3, to be interpreted by each objPhot + an array of length self.nBands, which
         # becomes deltaZp
 
+        self.theta = theta
+        
         deltaZp = np.resize(theta[self.ZpSlice], (self.nBands)) # extend by one element, set last element to enforce sum(deltaZp) = 0
         deltaZp[-1] = -np.sum(theta[self.ZpSlice])
         logPost = 0
@@ -254,6 +256,7 @@ def doMCMC(objCollection):
     nobj = objCollection.nObj
 
     outFileName = objCollection.paramDict['output_file']
+    summaryFileName = objCollection.paramDict['summary_file']
     outf = h5py.File(outFileName, 'w')
 
     pickleFileName = objCollection.paramDict['pickle_file']
@@ -266,6 +269,7 @@ def doMCMC(objCollection):
     
     # burnin
     print('starting burnin')
+
     sampler = emcee.EnsembleSampler(nwalkers, objCollection.nParams, objCollection)  # note that objCollection() returns the posterior
     result = sampler.run_mcmc(pos, nburnin, progress=True)
     print('burnin finished')
@@ -288,7 +292,7 @@ def doMCMC(objCollection):
     message = "\nMAP Parameters after Burn-in"
     print(message)
     print(theta)
-    outputResult(objCollection, theta, None)
+    outputResult(objCollection, theta, None, None)
 
     # set up output for chains
 
@@ -310,13 +314,15 @@ def doMCMC(objCollection):
     samples        = sampler.get_chain(flat=True)
     samples_lnprob = sampler.get_log_prob(flat=True)
     blobs = sampler.get_blobs(flat=True)
+
+    print('debug:',samples.shape, blobs.shape)
                 
     
     print('production finished')
     
-    dset_chain  = chain.create_dataset("position",(nwalkers*nprod,nparam),maxshape=(None,nparam), data=samples)
-    dset_lnprob = chain.create_dataset("lnprob",(nwalkers*nprod,),maxshape=(None,), data=samples_lnprob)
-    dset_blob = chain.create_dataset("magerr",(nwalkers*nprod,nbands*nobj),maxshape=(None,nbands*nobj), data=blobs)
+    dset_chain  = chain.create_dataset("position", data=samples)
+    dset_lnprob = chain.create_dataset("lnprob", data=samples_lnprob)
+    dset_blob = chain.create_dataset("magerr", data=blobs)
 
     outf.flush()
     outf.close()
@@ -333,17 +339,30 @@ def doMCMC(objCollection):
     message = "\nMAP Parameters after Production"
     print(message)
     print(theta)
-    outputResult(objCollection, theta, pickleFileName)
+    outputResult(objCollection, theta, summaryFileName, pickleFileName)
 
     return
    
-def outputResult(objCollection, theta, pickleFileName):
+def outputResult(objCollection, theta=None, outFileName=None, pickleFileName=None):
 
-    lnPost = objCollection(theta)
-    print('lnPost=', lnPost)
+    if theta is not None:
+        lnPost = objCollection(theta)
+
+    if outFileName is not None:
+        f = open(outFileName, 'w')
+    else:
+        f = sys.stdout
+
+    print('#name teff logg Av DM delta275 delta336 delta475 delta625 delta775 delta1600', file=f)     
     for objName in objCollection.objNames:
         obj = objCollection.objPhot[objName]
-        print(objName, 'Teff=', obj.teff, 'logg=', obj.logg, 'Av=', obj.Av, 'DM=', obj.optDM, 'mag-synmag=', obj.phot['mag']-obj.synMags['mag'])
+        print(objName, obj.teff,  obj.logg, obj.Av, obj.optDM, file=f, end=' ')
+        for i in range(len(obj.phot)):
+            print(obj.phot['mag'][i]-obj.synMags['mag'][i], file=f, end=' ')
+        print(file=f)
+
+    if outFileName is not None:
+        f.close()
 
     if pickleFileName is not None:
         fpkl = open(pickleFileName, 'wb')

@@ -6,7 +6,8 @@ import numpy as np
 
 def makePlots(hdfFileName, objNames=None, nPlot=None, outFileName=None):
 
-    outFileName = 'test.pdf'
+    if outFileName is None:
+        outFileName = 'test.pdf'
     
     f=h5py.File(hdfFileName,'r')
     runData = f['chain']
@@ -37,13 +38,16 @@ def makePlots(hdfFileName, objNames=None, nPlot=None, outFileName=None):
 
     bandSlice = {}
     objSlice = {}
+    objMagSlice = {}
     for band in bands.keys():
         indx = bands[band]
         bandSlice[band] = np.s_[indx::nBands]
     
     for i,obj in enumerate(objNames):
         objIdx = i*nObjParams
+        bandIdx = i*nBands
         objSlice[obj] = np.s_[plotSlice,objIdx:objIdx+nObjParams]
+        objMagSlice[obj] = np.s_[plotSlice, bandIdx:bandIdx+nBands]
 
     pdfOut = PdfPages(outFileName)
 
@@ -51,7 +55,8 @@ def makePlots(hdfFileName, objNames=None, nPlot=None, outFileName=None):
     # make object corner plots
     #
     for obj in objNames:
-        fig=corner.corner(runPosition[objSlice[obj]],labels=list(objParams), show_titles=True)
+        cornerData = np.hstack((runPosition[objSlice[obj]], runMagerr[objMagSlice[obj]]))
+        fig=corner.corner(cornerData,labels=list(objParams)+list(bands), show_titles=True)
         fig.text(0.7,0.95,obj,fontsize=16)
         plt.savefig(pdfOut, format='pdf')
         plt.close(fig)
