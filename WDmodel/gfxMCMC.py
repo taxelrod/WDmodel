@@ -20,6 +20,13 @@ def makePlots(hdfFileName, objNames=None, nPlot=None, outFileName=None):
     (nPts, nObjnBands) = runMagerr.shape
 
     #
+    # identify MAP point
+    #
+    mapIdx = np.argmax(runLnProb)
+    mapTheta = runPosition[mapIdx, :] # should be nObj*nParams in length
+    mapMagerr = runMagerr[mapIdx, :]
+    print(mapIdx, runLnProb[mapIdx], mapTheta, mapMagerr)
+    #
     # make slices
     #
     if nPlot is None:
@@ -56,21 +63,26 @@ def makePlots(hdfFileName, objNames=None, nPlot=None, outFileName=None):
     #
     for obj in objNames:
         cornerData = np.hstack((runPosition[objSlice[obj]], runMagerr[objMagSlice[obj]]))
-        fig=corner.corner(cornerData,labels=list(objParams)+list(bands), show_titles=True)
+        mapPts = np.zeros((nObjParams+nBands))
+        mapPts[0:nObjParams] = mapTheta[objSlice[obj][1]]
+        mapPts[nObjParams:] = mapMagerr[objMagSlice[obj][1]]
+        print(obj, mapPts)
+        fig=corner.corner(cornerData,labels=list(objParams)+list(bands), show_titles=True, truths=mapPts )
         fig.text(0.7,0.95,obj,fontsize=16)
         plt.savefig(pdfOut, format='pdf')
         plt.close(fig)
 
     #
-    # make band plots
+    # make band delta zp corner plots
     #
-    for band in bands.keys():
-        magerr = runMagerr[plotSlice, bandSlice[band]].flatten()
-        fig = plt.figure()
-        plt.hist(magerr, bins=20)
-        fig.text(0.7, 0.95, band, fontsize=16)
-        plt.savefig(pdfOut, format='pdf')
-        plt.close(fig)
-        
+    nBandsM1 = nBands - 1
+    cornerData = runPosition[plotSlice, -nBandsM1:]
+    zpLabels = ['zp275W', 'zp336W', 'zp475W', 'zp625W', 'zp775W']
+    print('zp truths:', mapTheta[-nBandsM1:])
+    fig=corner.corner(cornerData,labels=zpLabels, show_titles=True, truths=mapTheta[-nBandsM1:] )
+    plt.savefig(pdfOut, format='pdf')
+    plt.close(fig)
+
     pdfOut.close()
     f.close()
+
