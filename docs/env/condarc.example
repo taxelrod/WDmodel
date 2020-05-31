@@ -1,6 +1,0 @@
-channels:
-  - conda-forge
-  - defaults
-  - http://ssb.stsci.edu/astroconda
-show_channel_urls: true
-ssl_verify: true
