@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 
-def makePlots(hdfFileName, objNames=None, nPlot=None, outFileName=None):
+def makePlots(hdfFileName, objNames=None, nPlot=None, outFileName=None, mapOutFileName=None):
 
     if outFileName is None:
         outFileName = 'test.pdf'
@@ -58,20 +58,40 @@ def makePlots(hdfFileName, objNames=None, nPlot=None, outFileName=None):
 
     pdfOut = PdfPages(outFileName)
 
+    if mapOutFileName is not None:
+        fMap = open(mapOutFileName, 'w')
+    else:
+        fMap = None
+
     #
     # make object corner plots
     #
+    bandSigmas = {}
+
+    if fMap is not None:
+        print('# teff logg Av F275_r F336_r F475_r F625_r F775_r F160_r F275_s F336_s F475_s F625_s F775_s F160_s', file=fMap)
+        
     for obj in objNames:
         cornerData = np.hstack((runPosition[objSlice[obj]], runMagerr[objMagSlice[obj]]))
         mapPts = np.zeros((nObjParams+nBands))
         mapPts[0:nObjParams] = mapTheta[objSlice[obj][1]]
         mapPts[nObjParams:] = mapMagerr[objMagSlice[obj][1]]
-        print(obj, mapPts)
+        bandSigmas[obj] = np.std(runMagerr[objMagSlice[obj]], axis=0)
+        if fMap is not None:
+            print(obj, end=' ', file=fMap)
+            for n, v in enumerate(mapPts):
+                print(v, end=' ', file=fMap)
+            for n, v in enumerate(bandSigmas[obj]):
+                print(v, end=' ', file=fMap)
+            print(' ', file=fMap)
+            
         fig=corner.corner(cornerData,labels=list(objParams)+list(bands), show_titles=True, truths=mapPts )
         fig.text(0.7,0.95,obj,fontsize=16)
         plt.savefig(pdfOut, format='pdf')
         plt.close(fig)
 
+    print(bandSigmas)
+    
     #
     # make band delta zp corner plots
     #
@@ -85,4 +105,7 @@ def makePlots(hdfFileName, objNames=None, nPlot=None, outFileName=None):
 
     pdfOut.close()
     f.close()
+
+    if fMap is not None:
+        fMap.close()
 
