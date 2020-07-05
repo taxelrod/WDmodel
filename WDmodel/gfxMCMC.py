@@ -66,31 +66,27 @@ def makePlots(hdfFileName, objNames=None, nPlot=None, outFileName=None, mapOutFi
     #
     # make object corner plots
     #
+    mapPt = {}
     bandSigmas = {}
+    bandMedians = {}
+    paramSigmas = {}
+    paramMedians = {}
 
-    if fMap is not None:
-        print('# teff logg Av F275_r F336_r F475_r F625_r F775_r F160_r F275_s F336_s F475_s F625_s F775_s F160_s', file=fMap)
-        
     for obj in objNames:
         cornerData = np.hstack((runPosition[objSlice[obj]], runMagerr[objMagSlice[obj]]))
         mapPts = np.zeros((nObjParams+nBands))
         mapPts[0:nObjParams] = mapTheta[objSlice[obj][1]]
         mapPts[nObjParams:] = mapMagerr[objMagSlice[obj][1]]
+        mapPt[obj] = mapPts
         bandSigmas[obj] = np.std(runMagerr[objMagSlice[obj]], axis=0)
-        if fMap is not None:
-            print(obj, end=' ', file=fMap)
-            for n, v in enumerate(mapPts):
-                print(v, end=' ', file=fMap)
-            for n, v in enumerate(bandSigmas[obj]):
-                print(v, end=' ', file=fMap)
-            print(' ', file=fMap)
-            
+        bandMedians[obj] = np.median(runMagerr[objMagSlice[obj]], axis=0)
+        paramSigmas[obj] = np.std(runPosition[objSlice[obj]], axis=0)
+        paramMedians[obj] = np.median(runPosition[objSlice[obj]], axis=0)
         fig=corner.corner(cornerData,labels=list(objParams)+list(bands), show_titles=True, truths=mapPts )
         fig.text(0.7,0.95,obj,fontsize=16)
         plt.savefig(pdfOut, format='pdf')
         plt.close(fig)
 
-    print(bandSigmas)
     
     #
     # make band delta zp corner plots
@@ -107,5 +103,20 @@ def makePlots(hdfFileName, objNames=None, nPlot=None, outFileName=None, mapOutFi
     f.close()
 
     if fMap is not None:
+        print('# obj teff_map logg_map Av_map rF275_map rF336_map rF475_map rF625_map rF775_map rF160_map teff_med logg_med Av_med rF275_med rF336_med rF475_med rF625_med rF775_med rF160_med teff_sigma logg_sigma Av_sigma rF275_sigma rF336_sigma rF475_sigma rF625_sigma rF775_sigma rF160_sigma', file=fMap)
+        for obj in objNames:
+            print(obj, end=' ', file=fMap)
+            for n, v in enumerate(mapPt[obj]):
+                print(v, end=' ', file=fMap)
+            for n, v in enumerate(paramMedians[obj]):
+                print(v, end=' ', file=fMap)
+            for n, v in enumerate(bandMedians[obj]):
+                print(v, end=' ', file=fMap)
+            for n, v in enumerate(paramSigmas[obj]):
+                print(v, end=' ', file=fMap)
+            for n, v in enumerate(bandSigmas[obj]):
+                print(v, end=' ', file=fMap)
+            print(' ', file=fMap)
+            
         fMap.close()
 
