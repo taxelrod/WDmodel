@@ -1,16 +1,31 @@
 import h5py
+import pickle
 import corner
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 
-def makePlots(hdfFileName, objNames=None, nPlot=None, outFileName=None, mapOutFileName=None):
+def makePlots(hdfFileName, objPickleName, nPlot=None, outFileName=None, mapOutFileName=None):
 
     if outFileName is None:
         outFileName = 'test.pdf'
     
     f=h5py.File(hdfFileName,'r')
     runData = f['chain']
+
+    fpkl=open(objPickleName, 'rb')
+    objRun = pickle.load(fpkl)
+    fpkl.close()
+
+    objNames = objRun.objNames
+
+    bandNames = objRun.objPhot[objNames[0]].pb.keys()
+    bands = {}
+    for i, bandName in enumerate(bandNames):
+        bands[bandName] = i
+
+    nBands = len(bands)
+    
     if objNames is None:
         objNames = runData['objnames']
         
@@ -33,9 +48,6 @@ def makePlots(hdfFileName, objNames=None, nPlot=None, outFileName=None, mapOutFi
         plotSlice = np.s_[:]
     else:
         plotSlice = np.s_[-nPlot:]
-        
-    bands = {'F275W':0, 'F336W':1, 'F475W':2, 'F625W':3, 'F775W':4, 'F160W':5}
-    nBands = len(bands)
 
     objParams = {'Teff':0, 'logg':1, 'Av':2}
     nObjParams = len(objParams)

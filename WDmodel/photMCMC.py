@@ -65,6 +65,24 @@ class objectPhotometry(object):
 
     def loadPhotometry(self):
         self.phot = ioWD.get_phot_for_obj(self.objName, self.photFileName)
+        # ignore bands we don't want
+        try:
+            ignore_pb = self.paramDict['ignore_band']
+        except KeyError:
+            ignore_pb = None
+
+        if ignore_pb is not None:
+            pbnames = self.phot.pb
+            pbnames = list(set(pbnames) - set(ignore_pb))
+            # filter the photometry recarray to use only the passbands we want
+            useind = [x for x, pb in enumerate(self.phot.pb) if pb in pbnames]
+            useind = np.array(useind)
+            self.phot = self.phot.take(useind)
+
+            # set the pbnames from the trimmed photometry recarray to preserve order
+            pbnames = list(self.phot.pb)
+
+
         # initialize self.pb
         self.nBands = len(self.phot.pb)
         self.pb = passband.get_pbmodel(self.phot.pb,self.model,  None)
@@ -353,9 +371,16 @@ def outputResult(objCollection, theta=None, outFileName=None, pickleFileName=Non
     else:
         f = sys.stdout
 
-    print('#name teff logg Av DM delta275 delta336 delta475 delta625 delta775 delta1600', file=f)     
+    firstIter = True
     for objName in objCollection.objNames:
         obj = objCollection.objPhot[objName]
+        if firstIter:
+            deltaStr = ''
+            pbnames = obj.pb.keys()
+            for pb in pbnames:
+                deltaStr += 'delta' + pb + ' '
+            print('#name teff logg Av DM ', deltaStr, file=f)
+            firstIter = False
         print(objName, obj.teff,  obj.logg, obj.Av, obj.optDM, file=f, end=' ')
         for i in range(len(obj.phot)):
             print(obj.phot['mag'][i]-obj.synMags['mag'][i], file=f, end=' ')
