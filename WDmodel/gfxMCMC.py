@@ -105,7 +105,10 @@ def makePlots(hdfFileName, objPickleName, nPlot=None, outFileName=None, mapOutFi
     #
     nBandsM1 = nBands - 1
     cornerData = runPosition[plotSlice, -nBandsM1:]
-    zpLabels = ['zp275W', 'zp336W', 'zp475W', 'zp625W', 'zp775W']
+    
+    zpLabels = []
+    for bandName in bandNames:
+        zpLabels.append('zp' + bandName)
     print('zp truths:', mapTheta[-nBandsM1:])
     fig=corner.corner(cornerData,labels=zpLabels, show_titles=True, truths=mapTheta[-nBandsM1:] )
     plt.savefig(pdfOut, format='pdf')
@@ -115,7 +118,17 @@ def makePlots(hdfFileName, objPickleName, nPlot=None, outFileName=None, mapOutFi
     f.close()
 
     if fMap is not None:
-        print('# obj teff_map logg_map Av_map rF275_map rF336_map rF475_map rF625_map rF775_map rF160_map teff_med logg_med Av_med rF275_med rF336_med rF475_med rF625_med rF775_med rF160_med teff_sigma logg_sigma Av_sigma rF275_sigma rF336_sigma rF475_sigma rF625_sigma rF775_sigma rF160_sigma', file=fMap)
+        fileHdrLine = '# obj teff_map logg_map Av_map '
+        for bandName in bandNames:
+            fileHdrLine += 'r' + bandName + '_map '
+        fileHdrLine += 'teff_med logg_med Av_med '
+        for bandName in bandNames:
+            fileHdrLine += 'r' + bandName + '_med '
+        fileHdrLine += 'teff_sigma logg_sigma Av_sigma '
+        for bandName in bandNames:
+            fileHdrLine += 'r' + bandName + '_sigma '
+        print(fileHdrLine, file=fMap)
+        
         for obj in objNames:
             print(obj, end=' ', file=fMap)
             for n, v in enumerate(mapPt[obj]):
