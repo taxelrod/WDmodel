@@ -110,7 +110,7 @@ class objectPhotometry(object):
             return -np.inf
         
         # evaluate the 2D normal
-        return -np.log(self.tloggPrior.pdf(teff, logg))
+        return np.log(self.tloggPrior.pdf(teff, logg))
 
     def calcSynMags(self, teff, logg, Av, deltaZp):
         modelSed = self.model._get_model(teff, logg)
