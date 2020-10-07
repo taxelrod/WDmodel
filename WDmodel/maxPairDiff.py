@@ -1,6 +1,7 @@
 """
 Calculate the maximum absolute difference between all pairs of array elements
 """
+import sys
 import pandas as pd
 import numpy as np
 
@@ -14,8 +15,17 @@ def maxPairDiff(arr):
 
     return maxdiff
 
+"""
+Analyze and print pairwise differences in list of quantities for a GN results.dat or
+residuals.dat file after it has been self matched on obj by topcat
+"""
 
-def gnObjStats(gnfile, statColNames):
+def gnObjStats(gnfile, statColNames, outfile):
+
+    if outfile is not None:
+        file = open(outfile, 'w')
+    else:
+        file = sys.stdout
 
     gnDF=pd.read_table(gnfile,sep='\s+')
     (rows, cols) = gnDF.shape
@@ -28,22 +38,22 @@ def gnObjStats(gnfile, statColNames):
     goodGrp = list(allSet - badSet)
     maxGrp = int(max(gnDF['GroupID'][goodGrp]))
 
-    print('#obj', end=' ')
+    print('#obj', end=' ', file=file)
     for col in statColNames:
-        print('d'+col, end=' ')
-    print()
+        print('d'+col, end=' ', file=file)
+    print(file=file)
     
     for i in range(maxGrp):
         grp = np.where(gnDF['GroupID']==i+1)
         grpDF = gnDF.iloc[grp[0]]
         objName = grpDF['obj'].iloc[0]
-        print(objName,end=' ')
+        print(objName,end=' ', file=file)
         for col in statColNames:
-            print('%6.4f' % (maxPairDiff(grpDF[col])), end=' ')
-        print()
+            print('%6.4f' % (maxPairDiff(grpDF[col])), end=' ', file=file)
+        print(file=file)
 
-def gnResidualStats(gnfile):
-    gnObjStats(gnfile, ['rF275W', 'rF336W', 'rF625W', 'rF775W', 'rF160W'])
+def gnResidualStats(gnfile, outfile=None):
+    gnObjStats(gnfile, ['rF275W', 'rF336W', 'rF625W', 'rF775W', 'rF160W'], outfile)
 
-def gnResultStats(gnfile):
-    gnObjStats(gnfile, ['teff', 'logg', 'av'])
+def gnResultStats(gnfile, outfile=None):
+    gnObjStats(gnfile, ['teff', 'logg', 'av'], outfile)
