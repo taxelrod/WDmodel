@@ -111,8 +111,8 @@ def makePlots(hdfFileName, objPickleName, nPlot=None, outFileName=None, mapOutFi
     #
     # kluge alert!
     #
-    zpF160W = -np.sum( runPosition[plotSlice, -nBandsM1-2:-nBandsM1], axis=1 )
-    print('zpF160W:', zpF160W.shape, cornerData.shape, np.mean(zpF160W))
+    zpF160W = -np.sum( runPosition[plotSlice, -nBandsM1-2:-2], axis=1 )
+    print('zpF160W:', runPosition[plotSlice, -nBandsM1-2:-2].shape, cornerData.shape, np.mean(zpF160W))
 
     CRNL0L1 = runPosition[plotSlice, -2]*runPosition[plotSlice, -1]
 

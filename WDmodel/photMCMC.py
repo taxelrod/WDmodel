@@ -126,14 +126,14 @@ class objectPhotometry(object):
                         # needed due to GN interface inconsistency
         self.synMags = passband.get_model_synmags(sedPack, self.pb) # recarray with dtype=[('pb', '<U5'), ('mag', '<f8')])
         self.synMags['mag'] += deltaZp
-        self.optDM = np.sum((self.phot['mag']-self.synMags['mag'])/self.phot['mag_err']**2)/np.sum(1./self.phot['mag_err']**2)
+        self.optDM = np.sum((self.photCRNL-self.synMags['mag'])/self.phot['mag_err']**2)/np.sum(1./self.phot['mag_err']**2)
         self.synMags['mag'] += self.optDM
 
     def logLikelihood(self, teff, logg, Av, deltaZp, CRNL):
-        self.calcSynMags(teff, logg, Av, deltaZp)
         # modify phot for CRNL for CRNL band, usually F160W
         self.photCRNL = np.copy(self.phot['mag'])
         self.photCRNL[self.iCRNL] += CRNL[1]*(self.photCRNL[self.iCRNL] - CRNL[0])
+        self.calcSynMags(teff, logg, Av, deltaZp)
         return np.sum(-((self.photCRNL-self.synMags['mag'])/self.phot['mag_err'])**2)
 
     def logPost(self, teff, logg, Av, deltaZp, CRNL):
