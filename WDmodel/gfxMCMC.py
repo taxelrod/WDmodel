@@ -1,3 +1,6 @@
+"""
+Note:  before running need "from photMCMC import objectPhotometry, objectCollectionPhotometry"
+"""
 import h5py
 import pickle
 import corner
@@ -38,7 +41,7 @@ def makePlots(hdfFileName, objPickleName, nPlot=None, outFileName=None, mapOutFi
     # identify MAP point
     #
     mapIdx = np.argmax(runLnProb)
-    mapTheta = runPosition[mapIdx, :] # should be nObj*nParams in length
+    mapTheta = runPosition[mapIdx, :] # should be nObj*nParams in length ??  + nBands - 1 + 2
     mapMagerr = runMagerr[mapIdx, :]
     print(mapIdx, runLnProb[mapIdx], mapTheta, mapMagerr)
     #
@@ -101,16 +104,36 @@ def makePlots(hdfFileName, objPickleName, nPlot=None, outFileName=None, mapOutFi
 
     
     #
-    # make band delta zp corner plots
+    # make band delta zp  + CRNL corner plots
     #
     nBandsM1 = nBands - 1
-    cornerData = runPosition[plotSlice, -nBandsM1:]
+    cornerData = runPosition[plotSlice, -nBandsM1-2:]
+    #
+    # kluge alert!
+    #
+    zpF160W = -np.sum( runPosition[plotSlice, -nBandsM1-2:-nBandsM1], axis=1 )
+    print('zpF160W:', zpF160W.shape, cornerData.shape, np.mean(zpF160W))
+
+    CRNL0L1 = runPosition[plotSlice, -2]*runPosition[plotSlice, -1]
+
+    (nRow, nCol) = cornerData.shape
+    
+    cornerDatax = np.hstack((cornerData, np.reshape(zpF160W, (nRow, 1)), np.reshape(CRNL0L1, (nRow, 1))))
     
     zpLabels = []
-    for bandName in bandNames:
+    for (i,bandName) in enumerate(bandNames):
+        if i == nBandsM1:
+            break
         zpLabels.append('zp' + bandName)
+
+    zpLabels.append('CRNL0')
+    zpLabels.append('CRNL1')
+    zpLabels.append('zpF160W')
+    zpLabels.append('CRNL0L1')
+    
     print('zp truths:', mapTheta[-nBandsM1:])
-    fig=corner.corner(cornerData,labels=zpLabels, show_titles=True, truths=mapTheta[-nBandsM1:] )
+#    fig=corner.corner(cornerData,labels=zpLabels, show_titles=True, truths=mapTheta[-nBandsM1-2:] )
+    fig=corner.corner(cornerDatax,labels=zpLabels, show_titles=True )
     plt.savefig(pdfOut, format='pdf')
     plt.close(fig)
 

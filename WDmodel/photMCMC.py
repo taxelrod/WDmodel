@@ -38,6 +38,9 @@ class objectPhotometry(object):
         
         self.objName = objName
         self.paramDict = paramDict
+
+        self.CRNLbandName = paramDict['CRNL']['bandName']
+
         objList = paramDict['objList']
         if objList is None:
             print('objectPhotometry init: objlist not in paramDict')
@@ -87,6 +90,10 @@ class objectPhotometry(object):
         self.nBands = len(self.phot.pb)
         self.pb = passband.get_pbmodel(self.phot.pb,self.model,  None)
 
+        # set iCRNL to flag band that CRNL is applied to
+        pbNames = np.array(list(self.pb.keys()))  # pbNames is an odict, hence this ugliness
+        self.iCRNL = np.where(pbNames==self.CRNLbandName)[0][0]  
+
     def initPrior(self, tloggFileName=None):
         if tloggFileName is not None:
             self.tloggFileName = tloggFileName
@@ -122,11 +129,14 @@ class objectPhotometry(object):
         self.optDM = np.sum((self.phot['mag']-self.synMags['mag'])/self.phot['mag_err']**2)/np.sum(1./self.phot['mag_err']**2)
         self.synMags['mag'] += self.optDM
 
-    def logLikelihood(self, teff, logg, Av, deltaZp):
+    def logLikelihood(self, teff, logg, Av, deltaZp, CRNL):
         self.calcSynMags(teff, logg, Av, deltaZp)
-        return np.sum(-((self.phot['mag']-self.synMags['mag'])/self.phot['mag_err'])**2)
+        # modify phot for CRNL for CRNL band, usually F160W
+        self.photCRNL = np.copy(self.phot['mag'])
+        self.photCRNL[self.iCRNL] += CRNL[1]*(self.photCRNL[self.iCRNL] - CRNL[0])
+        return np.sum(-((self.photCRNL-self.synMags['mag'])/self.phot['mag_err'])**2)
 
-    def logPost(self, teff, logg, Av, deltaZp):
+    def logPost(self, teff, logg, Av, deltaZp, CRNL):
 
         self.teff = teff
         self.logg = logg
@@ -137,8 +147,9 @@ class objectPhotometry(object):
         if not np.isfinite(prior):
             return -np.inf, None
         
-        logLikelihood = self.logLikelihood(teff, logg, Av, deltaZp)
-        blob = self.phot['mag']-self.synMags['mag']
+        logLikelihood = self.logLikelihood(teff, logg, Av, deltaZp, CRNL)
+        blob = self.photCRNL - self.synMags['mag']
+
         return logLikelihood + prior, blob
 
     def firstGuess(self):
@@ -199,7 +210,8 @@ class objectCollectionPhotometry(object):
 
 
         self.ZpSlice = np.s_[iHi:iHi+self.nBands-1]  # last element of deltaZp is not explicitly carried because deltaZp sume to 0
-        self.nParams = self.nObj*self.nObjParams + self.nBands - 1
+        self.CRNLSlice = np.s_[iHi+self.nBands-1:iHi+self.nBands+1] # CRNL0, CRNL1
+        self.nParams = self.nObj*self.nObjParams + self.nBands - 1 + 2
         self.lowerBounds = np.zeros((self.nParams))
         self.upperBounds = np.zeros((self.nParams))
         for (i, objName) in enumerate(self.objNames):
@@ -207,6 +219,11 @@ class objectCollectionPhotometry(object):
             self.upperBounds[self.objSlice[objName]] = self.objPhot[objName].upperBounds
 
         self.lowerBounds[self.ZpSlice], self.upperBounds[self.ZpSlice]  = paramDict['deltaZp']['bounds']
+
+        print('------------------------------', self.nParams, self.CRNLSlice, self.lowerBounds[self.CRNLSlice], np.array([paramDict['CRNL']['bounds0'][0],paramDict['CRNL']['bounds1'][0]]))
+        
+        self.lowerBounds[self.CRNLSlice]  = np.array([paramDict['CRNL']['bounds0'][0],paramDict['CRNL']['bounds1'][0]])
+        self.upperBounds[self.CRNLSlice]  = np.array([paramDict['CRNL']['bounds0'][1],paramDict['CRNL']['bounds1'][1]])
 
     # return an initial guess at theta
     
@@ -219,17 +236,41 @@ class objectCollectionPhotometry(object):
         self.guess[self.ZpSlice] = 0
         self.guess_sigma[self.ZpSlice] = 1.0  # need to set this with a parameter
 
+        self.guess[self.CRNLSlice] = 0 # midpoint of bounds?
+        self.guess_sigma[self.CRNLSlice] = 1.0  # need to set this with a parameter
+
     
+    # calculate the prior associated with model-wide parameters, deltaZp and CRNL for now
+    
+    def outerLogPrior(self, deltaZp, CRNL):
+
+        deltaZpMin = np.amin(deltaZp)
+        deltaZpMax = np.amax(deltaZp)
+
+        if deltaZpMin < self.paramDict['deltaZp']['bounds'][0] or deltaZpMax > self.paramDict['deltaZp']['bounds'][1]:
+            return -np.inf
+
+        if CRNL[0] < self.paramDict['CRNL']['bounds0'][0] or CRNL[1] < self.paramDict['CRNL']['bounds1'][0]:
+            return -np.inf
+
+        if CRNL[0] > self.paramDict['CRNL']['bounds0'][1] or CRNL[1] > self.paramDict['CRNL']['bounds1'][1]:
+            return -np.inf
+
+        return 0 # uniform within bounds
+        
     # this is what's called by emcee EnsembleSampler to get the logPosterior
 
     def __call__(self, theta):
         # unpack theta into self.nObj arrays of 3, to be interpreted by each objPhot + an array of length self.nBands, which
-        # becomes deltaZp
+        # becomes deltaZp + an array of length 2, which is CRNL
 
         self.theta = theta
         
         deltaZp = np.resize(theta[self.ZpSlice], (self.nBands)) # extend by one element, set last element to enforce sum(deltaZp) = 0
         deltaZp[-1] = -np.sum(theta[self.ZpSlice])
+
+        CRNL = theta[self.CRNLSlice]  # two element array
+        
         logPost = 0
         blob = np.zeros((self.nObj*self.nBands))
         for objName in self.objNames:
@@ -237,11 +278,17 @@ class objectCollectionPhotometry(object):
             objBlobSlice = self.blobSlice[objName]
             obj = self.objPhot[objName]
             (teff, logg, Av) = theta[objSlice]
-            objPost, objBlob = obj.logPost(teff, logg, Av, deltaZp)
+            objPost, objBlob = obj.logPost(teff, logg, Av, deltaZp, CRNL)
             logPost += objPost
             blob[objBlobSlice] = objBlob
 
-        return logPost, blob # + prior for deltaZp
+        outerLogPrior = self.outerLogPrior(deltaZp, CRNL)
+
+        if not np.isfinite(outerLogPrior):
+            return -np.inf, blob
+        
+ #       print('blob, shape: ',blob, blob.shape)
+        return logPost + outerLogPrior, blob 
     
         
 # setupPhotEnv sets the environment variable PYSYN_CDBS prior to importing bandpass
@@ -286,7 +333,7 @@ def doMCMC(objCollection):
     pos = enforceBounds(pos, objCollection.lowerBounds, objCollection.upperBounds) 
     
     # burnin
-    print('starting burnin')
+    print('starting burnin, nParams=', objCollection.nParams, objCollection.guess.shape, objCollection.lowerBounds.shape, objCollection.upperBounds.shape, pos.shape)
 
     sampler = emcee.EnsembleSampler(nwalkers, objCollection.nParams, objCollection)  # note that objCollection() returns the posterior
     result = sampler.run_mcmc(pos, nburnin, progress=True)
@@ -383,7 +430,7 @@ def outputResult(objCollection, theta=None, outFileName=None, pickleFileName=Non
             firstIter = False
         print(objName, obj.teff,  obj.logg, obj.Av, obj.optDM, file=f, end=' ')
         for i in range(len(obj.phot)):
-            print(obj.phot['mag'][i]-obj.synMags['mag'][i], file=f, end=' ')
+            print(obj.photCRNL[i]-obj.synMags['mag'][i], file=f, end=' ')
         print(file=f)
 
     if outFileName is not None:
