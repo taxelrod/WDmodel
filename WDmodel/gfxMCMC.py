@@ -1,3 +1,6 @@
+"""
+Note:  before running need "from photMCMC import objectPhotometry, objectCollectionPhotometry"
+"""
 import h5py
 import pickle
 import corner
@@ -38,7 +41,7 @@ def makePlots(hdfFileName, objPickleName, nPlot=None, outFileName=None, mapOutFi
     # identify MAP point
     #
     mapIdx = np.argmax(runLnProb)
-    mapTheta = runPosition[mapIdx, :] # should be nObj*nParams in length
+    mapTheta = runPosition[mapIdx, :] # should be nObj*nParams in length ??  + nBands - 1 + 2
     mapMagerr = runMagerr[mapIdx, :]
     print(mapIdx, runLnProb[mapIdx], mapTheta, mapMagerr)
     #
@@ -101,13 +104,36 @@ def makePlots(hdfFileName, objPickleName, nPlot=None, outFileName=None, mapOutFi
 
     
     #
-    # make band delta zp corner plots
+    # make band delta zp  + CRNL corner plots
     #
     nBandsM1 = nBands - 1
-    cornerData = runPosition[plotSlice, -nBandsM1:]
-    zpLabels = ['zp275W', 'zp336W', 'zp475W', 'zp625W', 'zp775W']
+    cornerData = runPosition[plotSlice, -nBandsM1-2:]
+    #
+    # kluge alert!
+    #
+    zpF160W = -np.sum( runPosition[plotSlice, -nBandsM1-2:-2], axis=1 )
+    print('zpF160W:', runPosition[plotSlice, -nBandsM1-2:-2].shape, cornerData.shape, np.mean(zpF160W))
+
+    CRNL0L1 = runPosition[plotSlice, -2]*runPosition[plotSlice, -1]
+
+    (nRow, nCol) = cornerData.shape
+    
+    cornerDatax = np.hstack((cornerData, np.reshape(zpF160W, (nRow, 1)), np.reshape(CRNL0L1, (nRow, 1))))
+    
+    zpLabels = []
+    for (i,bandName) in enumerate(bandNames):
+        if i == nBandsM1:
+            break
+        zpLabels.append('zp' + bandName)
+
+    zpLabels.append('CRNL0')
+    zpLabels.append('CRNL1')
+    zpLabels.append('zpF160W')
+    zpLabels.append('CRNL0L1')
+    
     print('zp truths:', mapTheta[-nBandsM1:])
-    fig=corner.corner(cornerData,labels=zpLabels, show_titles=True, truths=mapTheta[-nBandsM1:] )
+#    fig=corner.corner(cornerData,labels=zpLabels, show_titles=True, truths=mapTheta[-nBandsM1-2:] )
+    fig=corner.corner(cornerDatax,labels=zpLabels, show_titles=True )
     plt.savefig(pdfOut, format='pdf')
     plt.close(fig)
 
@@ -115,7 +141,17 @@ def makePlots(hdfFileName, objPickleName, nPlot=None, outFileName=None, mapOutFi
     f.close()
 
     if fMap is not None:
-        print('# obj teff_map logg_map Av_map rF275_map rF336_map rF475_map rF625_map rF775_map rF160_map teff_med logg_med Av_med rF275_med rF336_med rF475_med rF625_med rF775_med rF160_med teff_sigma logg_sigma Av_sigma rF275_sigma rF336_sigma rF475_sigma rF625_sigma rF775_sigma rF160_sigma', file=fMap)
+        fileHdrLine = '# obj teff_map logg_map Av_map '
+        for bandName in bandNames:
+            fileHdrLine += 'r' + bandName + '_map '
+        fileHdrLine += 'teff_med logg_med Av_med '
+        for bandName in bandNames:
+            fileHdrLine += 'r' + bandName + '_med '
+        fileHdrLine += 'teff_sigma logg_sigma Av_sigma '
+        for bandName in bandNames:
+            fileHdrLine += 'r' + bandName + '_sigma '
+        print(fileHdrLine, file=fMap)
+        
         for obj in objNames:
             print(obj, end=' ', file=fMap)
             for n, v in enumerate(mapPt[obj]):

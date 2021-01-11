@@ -25,11 +25,13 @@ def fit2D(hdfChainFileName, fitFileName, plot=False):
     fout.close()
 
     if plot:
-        plt.plot(dsetPos[:,iTeff], dsetPos[:,iLogg], '.')
+        plt.plot(dsetPos[:,iTeff], dsetPos[:,iLogg], '.', ms=1, alpha=0.01)
+        fit2d = n2d.normal2D(scale, mu0, mu1, s0, s1, thetaCov)
+        fit2d.plotN2d()
         plt.show()
 
 if __name__ == '__main__':
-    fit2D(sys.argv[1], sys.argv[2], False)
+    fit2D(sys.argv[1], sys.argv[2], True)
     
     
 

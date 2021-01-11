@@ -1,4 +1,5 @@
 import numpy as np
+from numpy import ndarray
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 
@@ -17,6 +18,24 @@ class normal2D(object):
         dx = x - self.mu
         val = self.const * np.exp(-0.5*np.dot(dx, np.matmul(self.invCov, dx)))
         return val
+
+    def plotN2d(self, sigMul=3, nxPts=20, nyPts=20):
+        sigma = 1./np.sqrt(np.diag(self.invCov))
+        xa = np.linspace(self.mu[0] - sigMul*sigma[0], self.mu[0] + sigMul*sigma[0], nxPts)
+        ya = np.linspace(self.mu[1] - sigMul*sigma[1], self.mu[1] + sigMul*sigma[1], nyPts)
+        (xGrid, yGrid) = np.meshgrid(xa, ya)
+        xGridF = ndarray.flatten(xGrid)
+        yGridF = ndarray.flatten(yGrid)
+        zGridF = np.zeros_like(xGridF)
+        for (i, x) in enumerate(xGridF):
+            y = yGridF[i]
+            zGridF[i] = self.pdf(x, y)
+
+        zGrid = np.reshape(zGridF, (nxPts, nyPts))
+        
+        plt.contour(xGrid, yGrid, zGrid, colors=['black'])
+                        
+        
 
 
 def binSamples(xPoints, yPoints, nxBins, nyBins, sigWidth=2.0):
@@ -37,7 +56,7 @@ def binSamples(xPoints, yPoints, nxBins, nyBins, sigWidth=2.0):
     yCen = (yEdges[:-1] + yEdges[1:])/2
     return (histo, xCen, yCen)
 
-def normal2DObjFunc(normalParams, dataHisto, xEdges, yEdges, debug=True):
+def normal2DObjFunc(normalParams, dataHisto, xEdges, yEdges, debug=False):
     
     (scale, mu0, mu1, s0, s1, thetaCov) = normalParams
     n2d = normal2D(scale, mu0, mu1, s0, s1, thetaCov)
