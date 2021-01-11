@@ -110,7 +110,7 @@ class objectPhotometry(object):
             return -np.inf
         
         # evaluate the 2D normal
-        return -np.log(self.tloggPrior.pdf(teff, logg))
+        return np.log(self.tloggPrior.pdf(teff, logg))
 
     def calcSynMags(self, teff, logg, Av, deltaZp):
         modelSed = self.model._get_model(teff, logg)
@@ -250,7 +250,8 @@ def setupPhotEnv(pbPath):
     global passband
     
     if pbPath is None:
-        pbPath = '/home/tsa/Dropbox/WD/PyWD/WDmodel/WDdata/photometry/synphot/'
+#        pbPath = '/home/tsa/Dropbox/WD/PyWD/WDmodel/WDdata/photometry/synphot/'
+        pbPath = '/home/tim/WDmodel/WDdata/photometry/synphot/'
 
     os.environ['PYSYN_CDBS'] = pbPath
 
