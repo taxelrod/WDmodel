@@ -209,9 +209,9 @@ class objectCollectionPhotometry(object):
             self.blobSlice[objName] = np.s_[jLo:jHi]
 
 
-        self.ZpSlice = np.s_[iHi:iHi+self.nBands-1]  # last element of deltaZp is not explicitly carried because deltaZp sume to 0
-        self.CRNLSlice = np.s_[iHi+self.nBands-1:iHi+self.nBands+1] # CRNL0, CRNL1
-        self.nParams = self.nObj*self.nObjParams + self.nBands - 1 + 2
+        self.ZpSlice = np.s_[iHi:iHi+self.nBands-2]  # last element of deltaZp is not explicitly carried because deltaZp sume to 0
+        self.CRNLSlice = np.s_[iHi+self.nBands-2:iHi+self.nBands] # CRNL0, CRNL1
+        self.nParams = self.nObj*self.nObjParams + self.nBands - 2 + 2 # yes, I know!
         self.lowerBounds = np.zeros((self.nParams))
         self.upperBounds = np.zeros((self.nParams))
         for (i, objName) in enumerate(self.objNames):
@@ -265,9 +265,13 @@ class objectCollectionPhotometry(object):
         # becomes deltaZp + an array of length 2, which is CRNL
 
         self.theta = theta
+
+        # expand deltaZp by two elements.  The last element, deltaZPF160W is forced to always be zero.
+        # the second to last element enforces sum(deltaZp)=0
         
-        deltaZp = np.resize(theta[self.ZpSlice], (self.nBands)) # extend by one element, set last element to enforce sum(deltaZp) = 0
-        deltaZp[-1] = -np.sum(theta[self.ZpSlice])
+        deltaZp = np.resize(theta[self.ZpSlice], (self.nBands)) # extend by two elements
+        deltaZp[-1] = 0 # F160W
+        deltaZp[-2] = -np.sum(theta[self.ZpSlice])
 
         CRNL = theta[self.CRNLSlice]  # two element array
         
