@@ -210,22 +210,23 @@ class objectCollectionPhotometry(object):
 
 
         self.ZpSlice = np.s_[iHi:iHi+self.nBands-2]  # last element of deltaZp is not explicitly carried because deltaZp sume to 0
-        self.CRNLSlice = np.s_[iHi+self.nBands-2:iHi+self.nBands] # CRNL0, CRNL1
-        self.nParams = self.nObj*self.nObjParams + self.nBands - 2 + 2 # yes, I know!
+        self.CRNLSlice = np.s_[-1:] # CRNL1
+        self.nParams = self.nObj*self.nObjParams + self.nBands - 2 + 1 # yes, I know!
         self.lowerBounds = np.zeros((self.nParams))
         self.upperBounds = np.zeros((self.nParams))
         for (i, objName) in enumerate(self.objNames):
             self.lowerBounds[self.objSlice[objName]] = self.objPhot[objName].lowerBounds
             self.upperBounds[self.objSlice[objName]] = self.objPhot[objName].upperBounds
 
-        self.lowerBounds[self.ZpSlice], self.upperBounds[self.ZpSlice]  = paramDict['deltaZp']['bounds']
+        self.lowerBounds[self.ZpSlice], self.upperBounds[self.ZpSlice] = paramDict['deltaZp']['bounds']
 
-        print('------------------------------', self.nParams, self.CRNLSlice, self.lowerBounds[self.CRNLSlice], np.array([paramDict['CRNL']['bounds0'][0],paramDict['CRNL']['bounds1'][0]]))
-        
-        self.lowerBounds[self.CRNLSlice]  = np.array([paramDict['CRNL']['bounds0'][0],paramDict['CRNL']['bounds1'][0]])
-        self.upperBounds[self.CRNLSlice]  = np.array([paramDict['CRNL']['bounds0'][1],paramDict['CRNL']['bounds1'][1]])
+        self.lowerBounds[self.CRNLSlice], self.upperBounds[self.CRNLSlice] = paramDict['CRNL']['bounds1']
 
-    # return an initial guess at theta
+        self.CRNL0fixed = paramDict['CRNL']['fixed0']
+
+        print('------------------------------', self.nParams, self.ZpSlice, self.CRNLSlice, self.lowerBounds[self.CRNLSlice], self.CRNL0fixed)
+
+        # return an initial guess at theta
     
     def firstGuess(self):
         self.guess = np.zeros((self.nParams))
@@ -250,10 +251,10 @@ class objectCollectionPhotometry(object):
         if deltaZpMin < self.paramDict['deltaZp']['bounds'][0] or deltaZpMax > self.paramDict['deltaZp']['bounds'][1]:
             return -np.inf
 
-        if CRNL[0] < self.paramDict['CRNL']['bounds0'][0] or CRNL[1] < self.paramDict['CRNL']['bounds1'][0]:
+        if CRNL[1] < self.paramDict['CRNL']['bounds1'][0]:
             return -np.inf
 
-        if CRNL[0] > self.paramDict['CRNL']['bounds0'][1] or CRNL[1] > self.paramDict['CRNL']['bounds1'][1]:
+        if CRNL[1] > self.paramDict['CRNL']['bounds1'][1]:
             return -np.inf
 
         return 0 # uniform within bounds
@@ -273,7 +274,8 @@ class objectCollectionPhotometry(object):
         deltaZp[-1] = 0 # F160W
         deltaZp[-2] = -np.sum(theta[self.ZpSlice])
 
-        CRNL = theta[self.CRNLSlice]  # two element array
+        CRNL1 = theta[self.CRNLSlice]  # one element array
+        CRNL = np.array([self.CRNL0fixed, CRNL1])
         
         logPost = 0
         blob = np.zeros((self.nObj*self.nBands))

@@ -107,18 +107,16 @@ def makePlots(hdfFileName, objPickleName, nPlot=None, outFileName=None, mapOutFi
     # make band delta zp  + CRNL corner plots
     #
     nBandsM2 = nBands - 2
-    cornerData = runPosition[plotSlice, -nBandsM2-2:]
+    cornerData = runPosition[plotSlice, -nBandsM2-1:]
     #
     # kluge alert!
     #
-    zpF775W = -np.sum( runPosition[plotSlice, -nBandsM2-2:-2], axis=1 )
-    print('zpF775W:', runPosition[plotSlice, -nBandsM2-2:-2].shape, cornerData.shape, np.mean(zpF775W))
-
-    CRNL0L1 = runPosition[plotSlice, -2]*runPosition[plotSlice, -1]
+    zpF775W = -np.sum( runPosition[plotSlice, -nBandsM2-1:-1], axis=1 )
+    print('zpF775W:', runPosition[plotSlice, -nBandsM2-1:-1].shape, cornerData.shape, np.mean(zpF775W))
 
     (nRow, nCol) = cornerData.shape
     
-    cornerDatax = np.hstack((cornerData, np.reshape(zpF775W, (nRow, 1)), np.reshape(CRNL0L1, (nRow, 1))))
+    cornerDatax = np.hstack((cornerData, np.reshape(zpF775W, (nRow, 1))))
     
     zpLabels = []
     for (i,bandName) in enumerate(bandNames):
@@ -126,10 +124,8 @@ def makePlots(hdfFileName, objPickleName, nPlot=None, outFileName=None, mapOutFi
             break
         zpLabels.append('zp' + bandName)
 
-    zpLabels.append('CRNL0')
     zpLabels.append('CRNL1')
     zpLabels.append('zpF775W')
-    zpLabels.append('CRNL0L1')
     
     print('zp truths:', mapTheta[-nBandsM2:])
 #    fig=corner.corner(cornerData,labels=zpLabels, show_titles=True, truths=mapTheta[-nBandsM1-2:] )
