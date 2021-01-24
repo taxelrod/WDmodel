@@ -209,9 +209,9 @@ class objectCollectionPhotometry(object):
             self.blobSlice[objName] = np.s_[jLo:jHi]
 
 
-        self.ZpSlice = np.s_[iHi:iHi+self.nBands-2]  # last element of deltaZp is not explicitly carried because deltaZp sume to 0
+        self.ZpSlice = np.s_[iHi:iHi+self.nBands-1]  # last element of deltaZp is not explicitly carried because deltaZp sume to 0
         self.CRNLSlice = np.s_[-1:] # CRNL1
-        self.nParams = self.nObj*self.nObjParams + self.nBands - 2 + 1 # yes, I know!
+        self.nParams = self.nObj*self.nObjParams + self.nBands - 1 + 1 # yes, I know!
         self.lowerBounds = np.zeros((self.nParams))
         self.upperBounds = np.zeros((self.nParams))
         for (i, objName) in enumerate(self.objNames):
@@ -270,9 +270,8 @@ class objectCollectionPhotometry(object):
         # expand deltaZp by two elements.  The last element, deltaZPF160W is forced to always be zero.
         # the second to last element enforces sum(deltaZp)=0
         
-        deltaZp = np.resize(theta[self.ZpSlice], (self.nBands)) # extend by two elements
-        deltaZp[-1] = 0 # F160W
-        deltaZp[-2] = -np.sum(theta[self.ZpSlice])
+        deltaZp = np.resize(theta[self.ZpSlice], (self.nBands)) # extend by one element
+        deltaZp[-1] = -np.sum(theta[self.ZpSlice]) # F160W
 
         CRNL1 = theta[self.CRNLSlice]  # one element array
         CRNL = np.array([self.CRNL0fixed, CRNL1])
