@@ -106,28 +106,28 @@ def makePlots(hdfFileName, objPickleName, nPlot=None, outFileName=None, mapOutFi
     #
     # make band delta zp  + CRNL corner plots
     #
-    nBandsM2 = nBands - 2
-    cornerData = runPosition[plotSlice, -nBandsM2-1:]
+    nBandsM1 = nBands - 1
+    cornerData = runPosition[plotSlice, -nBandsM1-1:]
     #
     # kluge alert!
     #
-    zpF775W = -np.sum( runPosition[plotSlice, -nBandsM2-1:-1], axis=1 )
-    print('zpF775W:', runPosition[plotSlice, -nBandsM2-1:-1].shape, cornerData.shape, np.mean(zpF775W))
+    zpF160W = -np.sum( runPosition[plotSlice, -nBandsM1-1:-1], axis=1 )
+    print('zpF160W:', runPosition[plotSlice, -nBandsM1-1:-1].shape, cornerData.shape, np.mean(zpF160W))
 
     (nRow, nCol) = cornerData.shape
     
-    cornerDatax = np.hstack((cornerData, np.reshape(zpF775W, (nRow, 1))))
+    cornerDatax = np.hstack((cornerData, np.reshape(zpF160W, (nRow, 1))))
     
     zpLabels = []
     for (i,bandName) in enumerate(bandNames):
-        if i == nBandsM2:
+        if i == nBandsM1:
             break
         zpLabels.append('zp' + bandName)
 
     zpLabels.append('CRNL1')
-    zpLabels.append('zpF775W')
+    zpLabels.append('zpF160W')
     
-    print('zp truths:', mapTheta[-nBandsM2:])
+    print('zp truths:', mapTheta[-nBandsM1:])
 #    fig=corner.corner(cornerData,labels=zpLabels, show_titles=True, truths=mapTheta[-nBandsM1-2:] )
     fig=corner.corner(cornerDatax,labels=zpLabels, show_titles=True )
     plt.savefig(pdfOut, format='pdf')
